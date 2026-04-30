@@ -20,6 +20,12 @@ env/
 .env.*
 !.env.example
 
+# YouTube cookies (contains sensitive session data)
+cookies.txt
+
+# OAuth2 token export (contains refresh token — never commit)
+oauth2_token.b64
+
 # Downloads (keep folder, ignore contents)
 downloads/*
 !downloads/.gitkeep

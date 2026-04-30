@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(venv/Scripts/python -c \"import yt_dlp; ydl = yt_dlp.YoutubeDL\\({'quiet':True}\\); print\\(ydl.params.get\\('cachedir'\\)\\); ydl.__exit__\\(None,None,None\\)\")",
+      "Bash(venv/Scripts/python -c ' *)",
+      "Read(//c/Users/prashant.ghotkar_cod/.cache/yt-dlp/**)",
+      "Read(//c/Users/prashant.ghotkar_cod/.cache/yt-dlp/youtube-oauth2/**)",
+      "Bash(python -m py_compile scripts/setup_oauth2.py)",
+      "Bash(python -m py_compile app/utils/file_handler.py)"
+    ]
+  }
+}

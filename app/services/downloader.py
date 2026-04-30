@@ -7,7 +7,7 @@ from typing import Optional
 import imageio_ffmpeg
 import yt_dlp
 
-from app.utils.file_handler import DOWNLOADS_DIR, get_cookie_file
+from app.utils.file_handler import DOWNLOADS_DIR, get_cookie_file, is_oauth2_active
 
 # Bundled static binary — works on Render and any env without system ffmpeg
 _FFMPEG_PATH: str = imageio_ffmpeg.get_ffmpeg_exe()
@@ -50,7 +50,7 @@ class DownloaderService:
 
     def get_formats(self, url: str) -> dict:
         ydl_opts = {"quiet": True, "no_warnings": True, "ffmpeg_location": _FFMPEG_PATH}
-        _apply_cookies(ydl_opts)
+        _apply_auth(ydl_opts)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
         return _parse_formats(info)
@@ -78,7 +78,7 @@ class DownloaderService:
             "no_warnings": False,
             "ffmpeg_location": _FFMPEG_PATH,
         }
-        _apply_cookies(ydl_opts)
+        _apply_auth(ydl_opts)
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -168,8 +168,12 @@ def _best_audio_size(formats: list) -> int:
     return best.get("filesize") or best.get("filesize_approx") or 0
 
 
-def _apply_cookies(opts: dict) -> None:
-    """Attach the cookie file to ydl_opts if one was configured at startup."""
+def _apply_auth(opts: dict) -> None:
+    """Apply the best available auth: OAuth2 tokens > cookies file > no auth."""
+    if is_oauth2_active():
+        opts["username"] = "oauth2"
+        opts["password"] = ""
+        return
     cf = get_cookie_file()
     if cf and cf.exists():
         opts["cookiefile"] = str(cf)
