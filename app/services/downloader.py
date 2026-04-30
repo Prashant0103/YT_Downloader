@@ -49,7 +49,16 @@ class DownloaderService:
             self._jobs[job_id].update(kwargs)
 
     def get_formats(self, url: str) -> dict:
-        ydl_opts = {"quiet": True, "no_warnings": True, "ffmpeg_location": _FFMPEG_PATH}
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "ffmpeg_location": _FFMPEG_PATH,
+            # Very permissive format — we only need the formats list, not a
+            # specific quality. Without this yt-dlp applies its default selector
+            # which can raise "Requested format is not available" for some videos.
+            "format": "bestvideo*+bestaudio*/bestvideo+bestaudio/best",
+            "ignore_no_formats_error": True,
+        }
         _apply_auth(ydl_opts)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -169,15 +178,8 @@ def _best_audio_size(formats: list) -> int:
 
 
 def _apply_auth(opts: dict) -> None:
-    """Apply the best available auth: OAuth2 tokens > cookies file > no auth."""
-    if is_oauth2_active():
-        opts["username"] = "oauth2"
-        opts["password"] = ""
-        # The OAuth2 credentials belong to the YouTube TV client.
-        # Force tv_embedded so the innertube API request format matches the
-        # Bearer token type -- mismatching client causes HTTP 400.
-        opts["extractor_args"] = {"youtube": {"player_client": ["tv_embedded", "web"]}}
-        return
+    """Attach cookies if available. OAuth2 plugin causes HTTP 400 on current
+    YouTube API so only the cookiefile path is used."""
     cf = get_cookie_file()
     if cf and cf.exists():
         opts["cookiefile"] = str(cf)
