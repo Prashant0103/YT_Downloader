@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.routes.download import router
-from app.utils.file_handler import ensure_downloads_dir
+from app.utils.file_handler import ensure_downloads_dir, setup_cookies
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,6 +20,7 @@ _STATIC_DIR = Path(__file__).parent / "static"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ensure_downloads_dir()
+    setup_cookies()
     yield
 
 

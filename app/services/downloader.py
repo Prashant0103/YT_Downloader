@@ -7,7 +7,7 @@ from typing import Optional
 import imageio_ffmpeg
 import yt_dlp
 
-from app.utils.file_handler import DOWNLOADS_DIR
+from app.utils.file_handler import DOWNLOADS_DIR, get_cookie_file
 
 # Bundled static binary — works on Render and any env without system ffmpeg
 _FFMPEG_PATH: str = imageio_ffmpeg.get_ffmpeg_exe()
@@ -50,6 +50,7 @@ class DownloaderService:
 
     def get_formats(self, url: str) -> dict:
         ydl_opts = {"quiet": True, "no_warnings": True, "ffmpeg_location": _FFMPEG_PATH}
+        _apply_cookies(ydl_opts)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
         return _parse_formats(info)
@@ -77,6 +78,7 @@ class DownloaderService:
             "no_warnings": False,
             "ffmpeg_location": _FFMPEG_PATH,
         }
+        _apply_cookies(ydl_opts)
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -164,6 +166,13 @@ def _best_audio_size(formats: list) -> int:
         return 0
     best = max(audio, key=lambda f: f.get("abr") or f.get("tbr") or 0)
     return best.get("filesize") or best.get("filesize_approx") or 0
+
+
+def _apply_cookies(opts: dict) -> None:
+    """Attach the cookie file to ydl_opts if one was configured at startup."""
+    cf = get_cookie_file()
+    if cf and cf.exists():
+        opts["cookiefile"] = str(cf)
 
 
 def _resolve_filepath(ydl: yt_dlp.YoutubeDL, info: dict) -> str:
