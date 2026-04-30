@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YT Downloader</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Base ──────────────────────────────────────────── */
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #050508;
+      color: #e5e5e5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      overflow-x: hidden;
+    }
+
+    /* ── Animated background blobs ─────────────────────── */
+    .blob {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(90px);
+      pointer-events: none;
+      z-index: 0;
+      animation: blobFloat 18s ease-in-out infinite alternate;
+    }
+    .blob-1 {
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(255,0,0,0.18), transparent 70%);
+      top: -150px; left: -150px;
+      animation-duration: 22s;
+    }
+    .blob-2 {
+      width: 400px; height: 400px;
+      background: radial-gradient(circle, rgba(120,0,200,0.14), transparent 70%);
+      bottom: -100px; right: -80px;
+      animation-duration: 18s;
+      animation-direction: alternate-reverse;
+    }
+    .blob-3 {
+      width: 300px; height: 300px;
+      background: radial-gradient(circle, rgba(0,80,200,0.10), transparent 70%);
+      top: 40%; left: 60%;
+      animation-duration: 26s;
+    }
+    @keyframes blobFloat {
+      0%   { transform: translate(0, 0) scale(1); }
+      33%  { transform: translate(40px, -30px) scale(1.05); }
+      66%  { transform: translate(-20px, 40px) scale(0.96); }
+      100% { transform: translate(30px, 20px) scale(1.02); }
+    }
+
+    /* ── Main card ─────────────────────────────────────── */
+    .card {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 600px;
+      background: linear-gradient(
+        135deg,
+        rgba(255,255,255,0.065) 0%,
+        rgba(255,255,255,0.025) 100%
+      );
+      backdrop-filter: blur(40px) saturate(160%);
+      -webkit-backdrop-filter: blur(40px) saturate(160%);
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 24px;
+      padding: 2.25rem 2.25rem 2rem;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.04) inset,
+        0 2px 0 rgba(255,255,255,0.08) inset,
+        0 40px 80px -10px rgba(0,0,0,0.75),
+        0 0 100px -20px rgba(200,0,0,0.18);
+      animation: cardIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(32px) scale(0.97); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* ── Header ────────────────────────────────────────── */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.75rem;
+    }
+    .logo-wrap {
+      flex-shrink: 0;
+      width: 46px; height: 46px;
+      background: linear-gradient(135deg, #ff0000, #cc0000);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 6px 20px rgba(255,0,0,0.45), 0 2px 4px rgba(0,0,0,0.4);
+    }
+    .logo-wrap svg { width: 22px; height: 22px; }
+    .header-text h1 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #ffffff 30%, #cc8888);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .header-text p {
+      font-size: 0.8rem;
+      color: #666;
+      margin-top: 1px;
+    }
+
+    /* ── URL input row ─────────────────────────────────── */
+    .url-row {
+      display: flex;
+      gap: 0.6rem;
+      margin-bottom: 0;
+    }
+    .input-wrap {
+      flex: 1;
+      position: relative;
+    }
+    .input-wrap svg {
+      position: absolute;
+      left: 0.9rem;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 16px; height: 16px;
+      color: #555;
+      pointer-events: none;
+      transition: color 0.2s;
+    }
+    .url-input {
+      width: 100%;
+      padding: 0.75rem 1rem 0.75rem 2.5rem;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      color: #e5e5e5;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+    }
+    .url-input::placeholder { color: #444; }
+    .url-input:focus {
+      border-color: rgba(255,0,0,0.5);
+      background: rgba(255,255,255,0.06);
+      box-shadow: 0 0 0 3px rgba(255,0,0,0.08);
+    }
+    .url-input:focus + svg { color: #ff4444; }
+    .input-wrap:focus-within svg { color: #ff4444; }
+
+    /* ── Buttons ───────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.75rem 1.3rem;
+      border: none;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+      position: relative;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .btn::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(255,255,255,0);
+      transition: background 0.15s;
+    }
+    .btn:hover::after { background: rgba(255,255,255,0.07); }
+    .btn:active { transform: scale(0.96); }
+    .btn:disabled {
+      opacity: 0.38;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    .btn-check {
+      background: linear-gradient(135deg, #ff1a1a, #cc0000);
+      color: #fff;
+      box-shadow: 0 4px 16px rgba(255,0,0,0.35), 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .btn-check:hover:not(:disabled) {
+      transform: translateY(-2px) scale(1.02);
+      box-shadow: 0 8px 24px rgba(255,0,0,0.45), 0 2px 6px rgba(0,0,0,0.3);
+    }
+
+    /* ── Divider ───────────────────────────────────────── */
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin: 1.5rem 0;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+    }
+    .divider span {
+      font-size: 0.7rem;
+      color: #444;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      white-space: nowrap;
+    }
+
+    /* ── Video info ────────────────────────────────────── */
+    .video-info {
+      margin-bottom: 1.25rem;
+      padding: 0.9rem 1rem;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 12px;
+    }
+    .video-title {
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: #eee;
+      line-height: 1.4;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    .video-duration {
+      font-size: 0.78rem;
+      color: #666;
+      margin-top: 0.35rem;
+    }
+
+    /* ── Quality section label ─────────────────────────── */
+    .section-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.65rem;
+    }
+
+    /* ── Format cards grid ─────────────────────────────── */
+    .formats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 0.6rem;
+      margin-bottom: 1.5rem;
+      perspective: 900px;
+    }
+
+    .format-card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem 0.5rem 0.85rem;
+      background: linear-gradient(
+        145deg,
+        rgba(255,255,255,0.06),
+        rgba(255,255,255,0.02)
+      );
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 14px;
+      cursor: pointer;
+      transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+                  border-color 0.2s,
+                  box-shadow 0.25s,
+                  background 0.2s;
+      user-select: none;
+      transform-style: preserve-3d;
+    }
+    .format-card input[type="radio"] { display: none; }
+
+    .format-card:hover {
+      transform: translateY(-7px) rotateX(4deg) scale(1.03);
+      border-color: rgba(255,255,255,0.22);
+      box-shadow:
+        0 18px 36px rgba(0,0,0,0.45),
+        0 6px 12px rgba(0,0,0,0.25),
+        0 0 20px rgba(255,255,255,0.03);
+    }
+
+    .format-card.selected {
+      border-color: rgba(255,40,40,0.7);
+      background: linear-gradient(145deg, rgba(255,0,0,0.14), rgba(160,0,0,0.06));
+      box-shadow:
+        0 0 0 1px rgba(255,60,60,0.25),
+        0 12px 28px rgba(0,0,0,0.4),
+        0 0 30px rgba(255,0,0,0.18);
+      transform: translateY(-5px) scale(1.02);
+    }
+
+    /* checkmark badge on selected card */
+    .format-card.selected::after {
+      content: '✓';
+      position: absolute;
+      top: 6px; right: 8px;
+      font-size: 0.65rem;
+      color: #ff6060;
+      font-weight: 700;
+    }
+
+    .format-res {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.01em;
+    }
+    .format-card.selected .format-res { color: #ff8080; }
+
+    .format-size {
+      font-size: 0.7rem;
+      color: #555;
+      margin-top: 0.25rem;
+    }
+    .format-card.selected .format-size { color: rgba(255,100,100,0.7); }
+
+    /* card stagger-in animation */
+    .format-card { animation: cardSlideIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+    @keyframes cardSlideIn {
+      from { opacity: 0; transform: translateY(14px) scale(0.94); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* ── Download button ───────────────────────────────── */
+    .btn-download {
+      width: 100%;
+      padding: 0.9rem 1.5rem;
+      justify-content: center;
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      background: linear-gradient(135deg, #ff1a1a 0%, #aa0000 100%);
+      color: #fff;
+      border-radius: 14px;
+      box-shadow: 0 6px 20px rgba(255,0,0,0.35), 0 2px 5px rgba(0,0,0,0.35);
+    }
+    .btn-download:hover:not(:disabled) {
+      transform: translateY(-3px) scale(1.01);
+      box-shadow: 0 12px 32px rgba(255,0,0,0.45), 0 4px 10px rgba(0,0,0,0.35);
+    }
+    .btn-download:disabled {
+      background: linear-gradient(135deg, rgba(80,80,80,0.4), rgba(50,50,50,0.3));
+      box-shadow: none;
+    }
+
+    /* ── Status box ────────────────────────────────────── */
+    .status {
+      margin-top: 1.1rem;
+      padding: 0.85rem 1rem;
+      border-radius: 12px;
+      font-size: 0.875rem;
+      line-height: 1.55;
+      animation: fadeIn 0.25s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .status.info    {
+      background: rgba(30,80,160,0.15);
+      border: 1px solid rgba(60,120,220,0.25);
+      color: #80b8f8;
+    }
+    .status.success {
+      background: rgba(20,90,40,0.18);
+      border: 1px solid rgba(40,160,70,0.28);
+      color: #70df80;
+    }
+    .status.error   {
+      background: rgba(160,20,20,0.15);
+      border: 1px solid rgba(220,50,50,0.25);
+      color: #f08080;
+    }
+
+    /* ── Spinner ───────────────────────────────────────── */
+    .spinner {
+      display: inline-block;
+      width: 13px; height: 13px;
+      border: 2px solid currentColor;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.65s linear infinite;
+      margin-right: 7px;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Utility ───────────────────────────────────────── */
+    .hidden { display: none !important; }
+
+    /* ── Responsive ────────────────────────────────────── */
+    @media (max-width: 480px) {
+      .card { padding: 1.5rem 1.25rem; }
+      .formats-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Ambient background -->
+<div class="blob blob-1"></div>
+<div class="blob blob-2"></div>
+<div class="blob blob-3"></div>
+
+<div class="card">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo-wrap">
+      <!-- Play icon -->
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="10" fill="rgba(255,255,255,0.15)"/>
+        <polygon points="10,7.5 10,16.5 17,12" fill="white"/>
+      </svg>
+    </div>
+    <div class="header-text">
+      <h1>YT Downloader</h1>
+      <p>Download YouTube videos in your preferred quality</p>
+    </div>
+  </div>
+
+  <!-- URL Input -->
+  <div class="url-row">
+    <div class="input-wrap">
+      <!-- Link icon -->
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+        <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+      </svg>
+      <input class="url-input" type="text" id="url"
+        placeholder="https://www.youtube.com/watch?v=..."
+        autocomplete="off" spellcheck="false" />
+    </div>
+    <button class="btn btn-check" id="checkBtn">
+      <!-- Search icon -->
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      Check
+    </button>
+  </div>
+
+  <!-- Quality Section (hidden until Check) -->
+  <div id="qualitySection" class="hidden">
+    <div class="divider"><span>Video Details</span></div>
+
+    <div class="video-info">
+      <div class="video-title" id="videoTitle"></div>
+      <div class="video-duration" id="videoDuration"></div>
+    </div>
+
+    <div class="section-label">Select Quality</div>
+    <div class="formats-grid" id="formatsGrid"></div>
+
+    <button class="btn btn-download" id="downloadBtn" disabled>
+      <!-- Download icon -->
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      <span id="downloadBtnText">Select a quality first</span>
+    </button>
+  </div>
+
+  <!-- Status -->
+  <div class="status hidden" id="statusEl"></div>
+
+</div><!-- .card -->
+
+<script>
+  const urlEl          = document.getElementById('url');
+  const checkBtn       = document.getElementById('checkBtn');
+  const qualitySection = document.getElementById('qualitySection');
+  const videoTitleEl   = document.getElementById('videoTitle');
+  const videoDurEl     = document.getElementById('videoDuration');
+  const formatsGrid    = document.getElementById('formatsGrid');
+  const downloadBtn    = document.getElementById('downloadBtn');
+  const downloadBtnTxt = document.getElementById('downloadBtnText');
+  const statusEl       = document.getElementById('statusEl');
+
+  let selectedFormat = null;
+  let pollTimer      = null;
+
+  /* ── Helpers ── */
+
+  function showStatus(html, type) {
+    statusEl.innerHTML = html;
+    statusEl.className = 'status ' + type;
+    statusEl.classList.remove('hidden');
+  }
+  function hideStatus() { statusEl.classList.add('hidden'); }
+
+  function fmtDuration(secs) {
+    if (!secs) return '';
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = Math.floor(secs % 60);
+    return h > 0
+      ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+      : `${m}:${String(s).padStart(2,'0')}`;
+  }
+
+  function esc(str) {
+    return String(str ?? '')
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  /* ── Step 1: Fetch formats ── */
+
+  checkBtn.addEventListener('click', fetchFormats);
+  urlEl.addEventListener('keydown', e => { if (e.key === 'Enter') fetchFormats(); });
+
+  async function fetchFormats() {
+    const url = urlEl.value.trim();
+    if (!url) { showStatus('Please enter a YouTube URL.', 'error'); return; }
+
+    checkBtn.disabled = true;
+    checkBtn.innerHTML = `<span class="spinner"></span> Checking…`;
+    qualitySection.classList.add('hidden');
+    showStatus('<span class="spinner"></span> Fetching available qualities…', 'info');
+
+    try {
+      const res  = await fetch('/formats?url=' + encodeURIComponent(url));
+      const data = await res.json();
+
+      if (!res.ok) {
+        showStatus('&#9888; ' + esc(data.error || 'Could not fetch formats.'), 'error');
+        return;
+      }
+
+      if (!data.formats || data.formats.length === 0) {
+        showStatus('No downloadable formats found for this video.', 'error');
+        return;
+      }
+
+      // Populate header
+      videoTitleEl.textContent = data.title;
+      videoDurEl.textContent   = data.duration ? '⏱ ' + fmtDuration(data.duration) : '';
+
+      // Build quality cards
+      formatsGrid.innerHTML = '';
+      selectedFormat = null;
+      downloadBtn.disabled = true;
+      downloadBtnTxt.textContent = 'Select a quality first';
+
+      data.formats.forEach((fmt, i) => {
+        const card = document.createElement('label');
+        card.className = 'format-card';
+        card.style.animationDelay = `${i * 55}ms`;
+        card.innerHTML =
+          `<input type="radio" name="quality" value="${esc(fmt.format_key)}" />` +
+          `<span class="format-res">${esc(fmt.label)}</span>` +
+          `<span class="format-size">${fmt.size_mb ? '~' + fmt.size_mb + ' MB' : '—'}</span>`;
+
+        card.addEventListener('click', () => {
+          document.querySelectorAll('.format-card').forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+          selectedFormat = fmt.format_key;
+          downloadBtn.disabled = false;
+          downloadBtnTxt.textContent = `Download ${esc(fmt.label)}`;
+        });
+
+        formatsGrid.appendChild(card);
+      });
+
+      qualitySection.classList.remove('hidden');
+      hideStatus();
+
+    } catch {
+      showStatus('Network error — is the server running?', 'error');
+    } finally {
+      checkBtn.disabled = false;
+      checkBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        Check`;
+    }
+  }
+
+  /* ── Step 2: Start download ── */
+
+  downloadBtn.addEventListener('click', async () => {
+    if (!selectedFormat) return;
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+
+    downloadBtn.disabled = true;
+    downloadBtnTxt.textContent = 'Starting…';
+    showStatus('<span class="spinner"></span> Queuing download…', 'info');
+
+    try {
+      const body = new FormData();
+      body.append('url', urlEl.value.trim());
+      body.append('format_id', selectedFormat);
+
+      const res  = await fetch('/download', { method: 'POST', body });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showStatus('&#9888; ' + esc(data.error || 'Bad request.'), 'error');
+        downloadBtn.disabled = false;
+        downloadBtnTxt.textContent = 'Try Again';
+        return;
+      }
+
+      poll(data.job_id);
+    } catch {
+      showStatus('Network error — please try again.', 'error');
+      downloadBtn.disabled = false;
+      downloadBtnTxt.textContent = 'Try Again';
+    }
+  });
+
+  /* ── Polling ── */
+
+  async function poll(jobId) {
+    try {
+      const res  = await fetch('/status/' + jobId);
+      const data = await res.json();
+
+      if (data.status === 'completed') {
+        // Auto-trigger browser file download
+        const a = document.createElement('a');
+        a.href     = '/file/' + jobId;
+        a.download = data.filename || 'video.mp4';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        showStatus(
+          '&#10003; Download started — <strong>' + esc(data.filename) + '</strong>',
+          'success'
+        );
+        downloadBtn.disabled = false;
+        downloadBtnTxt.textContent = 'Download Again';
+
+      } else if (data.status === 'failed') {
+        showStatus('&#9888; ' + esc(data.error || 'Download failed.'), 'error');
+        downloadBtn.disabled = false;
+        downloadBtnTxt.textContent = 'Try Again';
+
+      } else {
+        showStatus('<span class="spinner"></span> Downloading — please wait…', 'info');
+        pollTimer = setTimeout(() => poll(jobId), 2000);
+      }
+    } catch {
+      showStatus('Lost connection while checking status.', 'error');
+      downloadBtn.disabled = false;
+      downloadBtnTxt.textContent = 'Try Again';
+    }
+  }
+</script>
+</body>
+</html>
