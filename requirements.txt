@@ -1,7 +1,7 @@
 fastapi>=0.111.0
 uvicorn[standard]>=0.29.0
 yt-dlp>=2024.4.9
-yt-dlp-youtube-oauth2>=2024.10.22
+yt-dlp-youtube-oauth2>=1.0.10
 jinja2>=3.1.4
 python-multipart>=0.0.9
 imageio-ffmpeg>=0.5.1
