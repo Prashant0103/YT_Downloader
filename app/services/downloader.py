@@ -4,9 +4,13 @@ from pathlib import Path
 from enum import Enum
 from typing import Optional
 
+import imageio_ffmpeg
 import yt_dlp
 
 from app.utils.file_handler import DOWNLOADS_DIR
+
+# Bundled static binary — works on Render and any env without system ffmpeg
+_FFMPEG_PATH: str = imageio_ffmpeg.get_ffmpeg_exe()
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +49,7 @@ class DownloaderService:
             self._jobs[job_id].update(kwargs)
 
     def get_formats(self, url: str) -> dict:
-        ydl_opts = {"quiet": True, "no_warnings": True}
+        ydl_opts = {"quiet": True, "no_warnings": True, "ffmpeg_location": _FFMPEG_PATH}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
         return _parse_formats(info)
@@ -71,6 +75,7 @@ class DownloaderService:
             "restrictfilenames": True,
             "quiet": True,
             "no_warnings": False,
+            "ffmpeg_location": _FFMPEG_PATH,
         }
 
         try:
