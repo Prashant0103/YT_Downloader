@@ -173,6 +173,10 @@ def _apply_auth(opts: dict) -> None:
     if is_oauth2_active():
         opts["username"] = "oauth2"
         opts["password"] = ""
+        # The OAuth2 credentials belong to the YouTube TV client.
+        # Force tv_embedded so the innertube API request format matches the
+        # Bearer token type -- mismatching client causes HTTP 400.
+        opts["extractor_args"] = {"youtube": {"player_client": ["tv_embedded", "web"]}}
         return
     cf = get_cookie_file()
     if cf and cf.exists():
