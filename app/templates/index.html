@@ -3,449 +3,327 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Download YouTube videos in the best quality — free, fast, no signup." />
   <title>YT Downloader</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    /* ── Base ──────────────────────────────────────────── */
+    /* ── Base ────────────────────────────────────────────── */
     body {
       font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      background: #050508;
-      color: #e5e5e5;
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 1.5rem;
+      padding: 2rem 1rem;
       overflow-x: hidden;
+      color: #e5e5e5;
+      background: #07000f;
     }
 
-    /* ── Animated background blobs ─────────────────────── */
-    .blob {
+    /* ── Background gradient mesh ────────────────────────── */
+    .bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background:
+        radial-gradient(ellipse 70% 55% at 12% 18%, rgba(220,0,0,0.22)   0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 88% 82%, rgba(130,0,240,0.18) 0%, transparent 60%),
+        radial-gradient(ellipse 55% 45% at 72% 15%, rgba(0,40,200,0.13)  0%, transparent 60%),
+        radial-gradient(ellipse 80% 70% at 50% 50%, rgba(30,0,60,0.6)    0%, transparent 80%),
+        #07000f;
+      animation: bgPulse 25s ease-in-out infinite alternate;
+    }
+    @keyframes bgPulse {
+      0%   { filter: hue-rotate(0deg)   brightness(1);   }
+      50%  { filter: hue-rotate(10deg)  brightness(1.05); }
+      100% { filter: hue-rotate(-5deg)  brightness(0.97); }
+    }
+
+    /* ── Floating orbs ───────────────────────────────────── */
+    .orb {
       position: fixed;
       border-radius: 50%;
-      filter: blur(90px);
+      filter: blur(75px);
       pointer-events: none;
       z-index: 0;
-      animation: blobFloat 18s ease-in-out infinite alternate;
+      animation: orbDrift ease-in-out infinite alternate;
     }
-    .blob-1 {
-      width: 500px; height: 500px;
-      background: radial-gradient(circle, rgba(255,0,0,0.18), transparent 70%);
-      top: -150px; left: -150px;
-      animation-duration: 22s;
-    }
-    .blob-2 {
-      width: 400px; height: 400px;
-      background: radial-gradient(circle, rgba(120,0,200,0.14), transparent 70%);
-      bottom: -100px; right: -80px;
-      animation-duration: 18s;
-      animation-direction: alternate-reverse;
-    }
-    .blob-3 {
-      width: 300px; height: 300px;
-      background: radial-gradient(circle, rgba(0,80,200,0.10), transparent 70%);
-      top: 40%; left: 60%;
-      animation-duration: 26s;
-    }
-    @keyframes blobFloat {
-      0%   { transform: translate(0, 0) scale(1); }
-      33%  { transform: translate(40px, -30px) scale(1.05); }
-      66%  { transform: translate(-20px, 40px) scale(0.96); }
-      100% { transform: translate(30px, 20px) scale(1.02); }
+    .orb-1 { width:620px; height:620px; background:radial-gradient(circle,rgba(255,20,20,.24),transparent 65%);  top:-220px; left:-180px;  animation-duration:24s; }
+    .orb-2 { width:520px; height:520px; background:radial-gradient(circle,rgba(150,0,255,.2), transparent 65%);  bottom:-180px; right:-160px; animation-duration:20s; animation-direction:alternate-reverse; }
+    .orb-3 { width:380px; height:380px; background:radial-gradient(circle,rgba(0,60,255,.14), transparent 65%);  top:45%; left:60%;        animation-duration:30s; }
+    .orb-4 { width:280px; height:280px; background:radial-gradient(circle,rgba(255,90,0,.16), transparent 65%);  top:18%; right:8%;        animation-duration:17s; animation-direction:alternate-reverse; }
+    @keyframes orbDrift {
+      0%   { transform: translate(0,0)        scale(1);    }
+      33%  { transform: translate(55px,-45px) scale(1.08); }
+      66%  { transform: translate(-35px,55px) scale(0.93); }
+      100% { transform: translate(45px,35px)  scale(1.05); }
     }
 
-    /* ── Main card ─────────────────────────────────────── */
+    /* ── Dot-grid overlay ────────────────────────────────── */
+    .dots {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image: radial-gradient(circle, rgba(255,255,255,.055) 1px, transparent 1px);
+      background-size: 30px 30px;
+    }
+
+    /* ── Card ────────────────────────────────────────────── */
     .card {
-      position: relative;
-      z-index: 1;
-      width: 100%;
-      max-width: 600px;
-      background: linear-gradient(
-        135deg,
-        rgba(255,255,255,0.065) 0%,
-        rgba(255,255,255,0.025) 100%
-      );
-      backdrop-filter: blur(40px) saturate(160%);
-      -webkit-backdrop-filter: blur(40px) saturate(160%);
-      border: 1px solid rgba(255,255,255,0.09);
-      border-radius: 24px;
-      padding: 2.25rem 2.25rem 2rem;
+      position: relative; z-index: 1;
+      width: 100%; max-width: 640px;
+      background: linear-gradient(145deg, rgba(255,255,255,.075) 0%, rgba(15,4,30,.88) 100%);
+      backdrop-filter: blur(50px) saturate(180%);
+      -webkit-backdrop-filter: blur(50px) saturate(180%);
+      border: 1px solid rgba(255,255,255,.11);
+      border-radius: 28px;
+      padding: 2.5rem 2.5rem 2.25rem;
       box-shadow:
-        0 0 0 1px rgba(255,255,255,0.04) inset,
-        0 2px 0 rgba(255,255,255,0.08) inset,
-        0 40px 80px -10px rgba(0,0,0,0.75),
-        0 0 100px -20px rgba(200,0,0,0.18);
-      animation: cardIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+        0 0 0 1px rgba(255,30,30,.07),
+        0 60px 120px -20px rgba(0,0,0,.85),
+        0 0 100px -15px rgba(200,0,0,.2),
+        inset 0 1px 0 rgba(255,255,255,.13),
+        inset 0 -1px 0 rgba(0,0,0,.35);
+      transition: transform 0.08s ease-out, box-shadow 0.08s ease-out;
+      transform-style: preserve-3d;
+      animation: cardIn .6s cubic-bezier(.22,1,.36,1) both;
     }
     @keyframes cardIn {
-      from { opacity: 0; transform: translateY(32px) scale(0.97); }
-      to   { opacity: 1; transform: translateY(0) scale(1); }
+      from { opacity:0; transform:translateY(44px) scale(.95) rotateX(6deg); }
+      to   { opacity:1; transform:translateY(0)    scale(1)   rotateX(0deg); }
+    }
+    /* Top accent glow line */
+    .card::before {
+      content:''; position:absolute;
+      top:0; left:12%; right:12%; height:1px;
+      background: linear-gradient(90deg, transparent, rgba(255,70,70,.85), rgba(255,160,0,.5), transparent);
+      border-radius:1px;
     }
 
-    /* ── Header ────────────────────────────────────────── */
-    .header {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      margin-bottom: 1.75rem;
-    }
-    .logo-wrap {
-      flex-shrink: 0;
-      width: 46px; height: 46px;
-      background: linear-gradient(135deg, #ff0000, #cc0000);
-      border-radius: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 6px 20px rgba(255,0,0,0.45), 0 2px 4px rgba(0,0,0,0.4);
-    }
-    .logo-wrap svg { width: 22px; height: 22px; }
-    .header-text h1 {
-      font-size: 1.3rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      background: linear-gradient(135deg, #ffffff 30%, #cc8888);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    .header-text p {
-      font-size: 0.8rem;
-      color: #666;
-      margin-top: 1px;
-    }
+    /* ── Header ──────────────────────────────────────────── */
+    .header { display:flex; align-items:center; gap:1.1rem; margin-bottom:2rem; }
 
-    /* ── URL input row ─────────────────────────────────── */
-    .url-row {
-      display: flex;
-      gap: 0.6rem;
-      margin-bottom: 0;
+    .logo {
+      flex-shrink:0; width:54px; height:54px;
+      background: linear-gradient(140deg, #ff3030, #cc0000, #880000);
+      border-radius:17px;
+      display:flex; align-items:center; justify-content:center;
+      box-shadow: 0 8px 26px rgba(255,0,0,.55), 0 2px 6px rgba(0,0,0,.55),
+                  inset 0 1px 0 rgba(255,190,190,.3);
+      animation: logoPulse 3.5s ease-in-out infinite;
     }
-    .input-wrap {
-      flex: 1;
-      position: relative;
+    @keyframes logoPulse {
+      0%,100% { box-shadow: 0 8px 26px rgba(255,0,0,.55), 0 2px 6px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,190,190,.3); }
+      50%     { box-shadow: 0 8px 38px rgba(255,0,0,.75), 0 2px 6px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,190,190,.3); }
     }
-    .input-wrap svg {
-      position: absolute;
-      left: 0.9rem;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 16px; height: 16px;
-      color: #555;
-      pointer-events: none;
-      transition: color 0.2s;
+    .logo svg { width:24px; height:24px; }
+
+    .htext h1 {
+      font-size:1.6rem; font-weight:800; letter-spacing:-.035em;
+      background: linear-gradient(130deg, #fff 0%, #ffdddd 45%, #ff9090 100%);
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
     }
+    .htext p { font-size:.82rem; color:rgba(255,255,255,.32); margin-top:3px; }
+
+    /* ── URL row ─────────────────────────────────────────── */
+    .url-row { display:flex; gap:.6rem; }
+    .iw { flex:1; position:relative; }
+    .iw svg {
+      position:absolute; left:1rem; top:50%; transform:translateY(-50%);
+      width:16px; height:16px; color:rgba(255,255,255,.22);
+      pointer-events:none; transition:color .2s; z-index:1;
+    }
+    .iw:focus-within svg { color:rgba(255,100,100,.7); }
     .url-input {
-      width: 100%;
-      padding: 0.75rem 1rem 0.75rem 2.5rem;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 12px;
-      color: #e5e5e5;
-      font-size: 0.9rem;
-      outline: none;
-      transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+      width:100%;
+      padding:.85rem 1rem .85rem 2.75rem;
+      background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.1);
+      border-radius:14px; color:#fff; font-size:.9rem; outline:none;
+      transition:border-color .25s, background .25s, box-shadow .25s;
     }
-    .url-input::placeholder { color: #444; }
+    .url-input::placeholder { color:rgba(255,255,255,.2); }
     .url-input:focus {
-      border-color: rgba(255,0,0,0.5);
-      background: rgba(255,255,255,0.06);
-      box-shadow: 0 0 0 3px rgba(255,0,0,0.08);
+      background:rgba(255,255,255,.08);
+      border-color:rgba(255,60,60,.6);
+      box-shadow:0 0 0 3px rgba(255,0,0,.1), 0 0 22px rgba(255,0,0,.07);
     }
-    .url-input:focus + svg { color: #ff4444; }
-    .input-wrap:focus-within svg { color: #ff4444; }
 
-    /* ── Buttons ───────────────────────────────────────── */
+    /* ── Buttons ─────────────────────────────────────────── */
     .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      padding: 0.75rem 1.3rem;
-      border: none;
-      border-radius: 12px;
-      font-size: 0.9rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-      position: relative;
-      overflow: hidden;
-      white-space: nowrap;
+      display:inline-flex; align-items:center; justify-content:center; gap:.45rem;
+      border:none; font-family:inherit; font-weight:700; cursor:pointer;
+      position:relative; overflow:hidden; white-space:nowrap;
+      transition:transform .2s cubic-bezier(.34,1.56,.64,1), box-shadow .2s;
     }
-    .btn::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: rgba(255,255,255,0);
-      transition: background 0.15s;
-    }
-    .btn:hover::after { background: rgba(255,255,255,0.07); }
-    .btn:active { transform: scale(0.96); }
-    .btn:disabled {
-      opacity: 0.38;
-      cursor: not-allowed;
-      transform: none !important;
-    }
+    .btn::after { content:''; position:absolute; inset:0; background:rgba(255,255,255,0); transition:background .15s; }
+    .btn:not(:disabled):hover::after { background:rgba(255,255,255,.08); }
+    .btn:active { transform:scale(.95) !important; }
+    .btn:disabled { opacity:.32; cursor:not-allowed; transform:none !important; box-shadow:none !important; }
 
     .btn-check {
-      background: linear-gradient(135deg, #ff1a1a, #cc0000);
-      color: #fff;
-      box-shadow: 0 4px 16px rgba(255,0,0,0.35), 0 1px 3px rgba(0,0,0,0.3);
+      padding:.85rem 1.4rem; font-size:.9rem; border-radius:14px;
+      background:linear-gradient(135deg,#ff2828,#cc0000,#990000); color:#fff;
+      box-shadow:0 6px 22px rgba(255,0,0,.42), 0 2px 6px rgba(0,0,0,.45),
+                 inset 0 1px 0 rgba(255,170,170,.3);
     }
-    .btn-check:hover:not(:disabled) {
-      transform: translateY(-2px) scale(1.02);
-      box-shadow: 0 8px 24px rgba(255,0,0,0.45), 0 2px 6px rgba(0,0,0,0.3);
-    }
-
-    /* ── Divider ───────────────────────────────────────── */
-    .divider {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      margin: 1.5rem 0;
-    }
-    .divider::before, .divider::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
-    }
-    .divider span {
-      font-size: 0.7rem;
-      color: #444;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      white-space: nowrap;
+    .btn-check:not(:disabled):hover {
+      transform:translateY(-3px) scale(1.03);
+      box-shadow:0 12px 30px rgba(255,0,0,.52), 0 4px 10px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,170,170,.3);
     }
 
-    /* ── Video info ────────────────────────────────────── */
-    .video-info {
-      margin-bottom: 1.25rem;
-      padding: 0.9rem 1rem;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.07);
-      border-radius: 12px;
+    /* ── Divider ─────────────────────────────────────────── */
+    .divider { display:flex; align-items:center; gap:.75rem; margin:1.75rem 0 1.25rem; }
+    .divider::before,.divider::after {
+      content:''; flex:1; height:1px;
+      background:linear-gradient(90deg,transparent,rgba(255,255,255,.1),transparent);
     }
-    .video-title {
-      font-size: 0.95rem;
-      font-weight: 500;
-      color: #eee;
-      line-height: 1.4;
-      overflow: hidden;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
+    .div-label { font-size:.68rem; font-weight:700; color:rgba(255,255,255,.25); text-transform:uppercase; letter-spacing:.12em; }
+
+    /* ── Video info ──────────────────────────────────────── */
+    .vinfo {
+      padding:1rem 1.1rem;
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:14px; margin-bottom:1.4rem;
+      position:relative; overflow:hidden;
     }
-    .video-duration {
-      font-size: 0.78rem;
-      color: #666;
-      margin-top: 0.35rem;
+    .vinfo::before {
+      content:''; position:absolute; left:0; top:0; bottom:0; width:3px;
+      background:linear-gradient(180deg,#ff2020,#ff6600); border-radius:2px 0 0 2px;
+    }
+    .vtitle {
+      font-size:.9rem; font-weight:500; color:#fff; line-height:1.45;
+      overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+      padding-left:.55rem;
+    }
+    .vdur { font-size:.75rem; color:rgba(255,255,255,.32); margin-top:.3rem; padding-left:.55rem; }
+
+    /* ── Quality grid ────────────────────────────────────── */
+    .qlabel { font-size:.69rem; font-weight:700; color:rgba(255,255,255,.28); text-transform:uppercase; letter-spacing:.12em; margin-bottom:.75rem; }
+
+    .fgrid {
+      display:grid;
+      grid-template-columns:repeat(auto-fill, minmax(105px,1fr));
+      gap:.65rem;
+      margin-bottom:1.5rem;
     }
 
-    /* ── Quality section label ─────────────────────────── */
-    .section-label {
-      font-size: 0.72rem;
-      font-weight: 600;
-      color: #555;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      margin-bottom: 0.65rem;
+    .fcard {
+      position:relative;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      padding:1.15rem .5rem .95rem;
+      background:linear-gradient(145deg,rgba(255,255,255,.075),rgba(255,255,255,.02));
+      border:1px solid rgba(255,255,255,.1);
+      border-radius:16px;
+      cursor:pointer; user-select:none;
+      transition:border-color .15s, background .15s, box-shadow .15s;
+      transform-style:preserve-3d; will-change:transform;
+      animation:fcIn .4s cubic-bezier(.22,1,.36,1) both;
+    }
+    @keyframes fcIn { from{opacity:0;transform:translateY(14px) scale(.9)} to{opacity:1;transform:none} }
+    .fcard input[type=radio] { display:none; }
+    /* glossy top edge */
+    .fcard::before {
+      content:''; position:absolute; top:0; left:12%; right:12%; height:1px;
+      background:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent);
     }
 
-    /* ── Format cards grid ─────────────────────────────── */
-    .formats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-      gap: 0.6rem;
-      margin-bottom: 1.5rem;
-      perspective: 900px;
+    .fcard.sel {
+      border-color:rgba(255,55,55,.7);
+      background:linear-gradient(145deg,rgba(255,20,20,.2),rgba(160,0,0,.09));
+      box-shadow:0 0 0 1px rgba(255,60,60,.22), 0 12px 32px rgba(0,0,0,.45), 0 0 34px rgba(255,0,0,.22);
+    }
+    .fcard.sel::after { content:'✓'; position:absolute; top:7px; right:9px; font-size:.58rem; font-weight:900; color:#ff6060; }
+
+    .fres { font-size:1.15rem; font-weight:800; color:#fff; letter-spacing:-.02em; }
+    .fcard.sel .fres {
+      background:linear-gradient(135deg,#ff9090,#ff4040);
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+    }
+    .fsz { font-size:.68rem; color:rgba(255,255,255,.33); margin-top:.25rem; font-weight:500; }
+    .fcard.sel .fsz { color:rgba(255,130,130,.55); }
+
+    /* ── Download button ─────────────────────────────────── */
+    .btn-dl {
+      width:100%; padding:1.05rem 1.5rem; font-size:1rem; letter-spacing:.01em;
+      border-radius:16px;
+      background:linear-gradient(135deg,#ff2828 0%,#cc0000 50%,#8a0000 100%); color:#fff;
+      box-shadow:0 8px 26px rgba(255,0,0,.42), 0 3px 8px rgba(0,0,0,.55),
+                 inset 0 1px 0 rgba(255,140,140,.25), inset 0 -1px 0 rgba(0,0,0,.25);
+    }
+    .btn-dl:not(:disabled):hover {
+      transform:translateY(-4px) scale(1.01);
+      box-shadow:0 16px 40px rgba(255,0,0,.52), 0 6px 16px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,140,140,.3);
+    }
+    .btn-dl:disabled {
+      background:linear-gradient(135deg,rgba(55,55,55,.55),rgba(35,35,35,.45));
     }
 
-    .format-card {
-      position: relative;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 1rem 0.5rem 0.85rem;
-      background: linear-gradient(
-        145deg,
-        rgba(255,255,255,0.06),
-        rgba(255,255,255,0.02)
-      );
-      border: 1px solid rgba(255,255,255,0.09);
-      border-radius: 14px;
-      cursor: pointer;
-      transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
-                  border-color 0.2s,
-                  box-shadow 0.25s,
-                  background 0.2s;
-      user-select: none;
-      transform-style: preserve-3d;
+    /* ── Status ──────────────────────────────────────────── */
+    .sbox {
+      margin-top:1.1rem; padding:.9rem 1.1rem;
+      border-radius:14px; font-size:.875rem; line-height:1.55;
+      animation:fadeUp .25s ease both;
     }
-    .format-card input[type="radio"] { display: none; }
+    @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+    .sbox.info    { background:rgba(18,55,180,.2);  border:1px solid rgba(60,120,255,.28); color:#90bbff; }
+    .sbox.success { background:rgba(10,100,40,.22); border:1px solid rgba(30,200,80,.3);   color:#72ea85; }
+    .sbox.error   { background:rgba(180,18,18,.2);  border:1px solid rgba(255,60,60,.3);   color:#ff9090; }
 
-    .format-card:hover {
-      transform: translateY(-7px) rotateX(4deg) scale(1.03);
-      border-color: rgba(255,255,255,0.22);
-      box-shadow:
-        0 18px 36px rgba(0,0,0,0.45),
-        0 6px 12px rgba(0,0,0,0.25),
-        0 0 20px rgba(255,255,255,0.03);
+    /* ── Spinner ─────────────────────────────────────────── */
+    .sp {
+      display:inline-block; width:13px; height:13px;
+      border:2px solid currentColor; border-top-color:transparent;
+      border-radius:50%; animation:rot .65s linear infinite;
+      margin-right:7px; vertical-align:middle;
     }
+    @keyframes rot { to{transform:rotate(360deg)} }
 
-    .format-card.selected {
-      border-color: rgba(255,40,40,0.7);
-      background: linear-gradient(145deg, rgba(255,0,0,0.14), rgba(160,0,0,0.06));
-      box-shadow:
-        0 0 0 1px rgba(255,60,60,0.25),
-        0 12px 28px rgba(0,0,0,0.4),
-        0 0 30px rgba(255,0,0,0.18);
-      transform: translateY(-5px) scale(1.02);
-    }
+    .hidden { display:none !important; }
 
-    /* checkmark badge on selected card */
-    .format-card.selected::after {
-      content: '✓';
-      position: absolute;
-      top: 6px; right: 8px;
-      font-size: 0.65rem;
-      color: #ff6060;
-      font-weight: 700;
-    }
-
-    .format-res {
-      font-size: 1.1rem;
-      font-weight: 700;
-      color: #fff;
-      letter-spacing: -0.01em;
-    }
-    .format-card.selected .format-res { color: #ff8080; }
-
-    .format-size {
-      font-size: 0.7rem;
-      color: #555;
-      margin-top: 0.25rem;
-    }
-    .format-card.selected .format-size { color: rgba(255,100,100,0.7); }
-
-    /* card stagger-in animation */
-    .format-card { animation: cardSlideIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
-    @keyframes cardSlideIn {
-      from { opacity: 0; transform: translateY(14px) scale(0.94); }
-      to   { opacity: 1; transform: translateY(0) scale(1); }
-    }
-
-    /* ── Download button ───────────────────────────────── */
-    .btn-download {
-      width: 100%;
-      padding: 0.9rem 1.5rem;
-      justify-content: center;
-      font-size: 0.95rem;
-      font-weight: 700;
-      letter-spacing: 0.01em;
-      background: linear-gradient(135deg, #ff1a1a 0%, #aa0000 100%);
-      color: #fff;
-      border-radius: 14px;
-      box-shadow: 0 6px 20px rgba(255,0,0,0.35), 0 2px 5px rgba(0,0,0,0.35);
-    }
-    .btn-download:hover:not(:disabled) {
-      transform: translateY(-3px) scale(1.01);
-      box-shadow: 0 12px 32px rgba(255,0,0,0.45), 0 4px 10px rgba(0,0,0,0.35);
-    }
-    .btn-download:disabled {
-      background: linear-gradient(135deg, rgba(80,80,80,0.4), rgba(50,50,50,0.3));
-      box-shadow: none;
-    }
-
-    /* ── Status box ────────────────────────────────────── */
-    .status {
-      margin-top: 1.1rem;
-      padding: 0.85rem 1rem;
-      border-radius: 12px;
-      font-size: 0.875rem;
-      line-height: 1.55;
-      animation: fadeIn 0.25s ease;
-    }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-    .status.info    {
-      background: rgba(30,80,160,0.15);
-      border: 1px solid rgba(60,120,220,0.25);
-      color: #80b8f8;
-    }
-    .status.success {
-      background: rgba(20,90,40,0.18);
-      border: 1px solid rgba(40,160,70,0.28);
-      color: #70df80;
-    }
-    .status.error   {
-      background: rgba(160,20,20,0.15);
-      border: 1px solid rgba(220,50,50,0.25);
-      color: #f08080;
-    }
-
-    /* ── Spinner ───────────────────────────────────────── */
-    .spinner {
-      display: inline-block;
-      width: 13px; height: 13px;
-      border: 2px solid currentColor;
-      border-top-color: transparent;
-      border-radius: 50%;
-      animation: spin 0.65s linear infinite;
-      margin-right: 7px;
-      vertical-align: middle;
-      flex-shrink: 0;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* ── Utility ───────────────────────────────────────── */
-    .hidden { display: none !important; }
-
-    /* ── Responsive ────────────────────────────────────── */
-    @media (max-width: 480px) {
-      .card { padding: 1.5rem 1.25rem; }
-      .formats-grid { grid-template-columns: repeat(3, 1fr); }
+    @media(max-width:500px){
+      .card { padding:1.75rem 1.25rem; }
+      .fgrid { grid-template-columns:repeat(3,1fr); }
+      .htext h1 { font-size:1.25rem; }
     }
   </style>
 </head>
 <body>
 
-<!-- Ambient background -->
-<div class="blob blob-1"></div>
-<div class="blob blob-2"></div>
-<div class="blob blob-3"></div>
+<div class="bg"></div>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+<div class="orb orb-4"></div>
+<div class="dots"></div>
 
-<div class="card">
+<div class="card" id="card">
 
   <!-- Header -->
   <div class="header">
-    <div class="logo-wrap">
-      <!-- Play icon -->
-      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="12" cy="12" r="10" fill="rgba(255,255,255,0.15)"/>
-        <polygon points="10,7.5 10,16.5 17,12" fill="white"/>
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="10" fill="rgba(255,255,255,0.13)"/>
+        <polygon points="9.5,7 9.5,17 17.5,12" fill="white"/>
       </svg>
     </div>
-    <div class="header-text">
+    <div class="htext">
       <h1>YT Downloader</h1>
       <p>Download YouTube videos in your preferred quality</p>
     </div>
   </div>
 
-  <!-- URL Input -->
+  <!-- URL input -->
   <div class="url-row">
-    <div class="input-wrap">
-      <!-- Link icon -->
+    <div class="iw">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
         <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
       </svg>
       <input class="url-input" type="text" id="url"
-        placeholder="https://www.youtube.com/watch?v=..."
-        autocomplete="off" spellcheck="false" />
+        placeholder="Paste YouTube URL here…" autocomplete="off" spellcheck="false"/>
     </div>
     <button class="btn btn-check" id="checkBtn">
-      <!-- Search icon -->
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
       </svg>
@@ -453,215 +331,200 @@
     </button>
   </div>
 
-  <!-- Quality Section (hidden until Check) -->
-  <div id="qualitySection" class="hidden">
-    <div class="divider"><span>Video Details</span></div>
-
-    <div class="video-info">
-      <div class="video-title" id="videoTitle"></div>
-      <div class="video-duration" id="videoDuration"></div>
+  <!-- Quality section -->
+  <div id="qsec" class="hidden">
+    <div class="divider"><span class="div-label">Video Info</span></div>
+    <div class="vinfo">
+      <div class="vtitle" id="vtitle"></div>
+      <div class="vdur"   id="vdur"></div>
     </div>
-
-    <div class="section-label">Select Quality</div>
-    <div class="formats-grid" id="formatsGrid"></div>
-
-    <button class="btn btn-download" id="downloadBtn" disabled>
-      <!-- Download icon -->
+    <div class="qlabel">Select Quality</div>
+    <div class="fgrid" id="fgrid"></div>
+    <button class="btn btn-dl" id="dlBtn" disabled>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
         <polyline points="7 10 12 15 17 10"/>
         <line x1="12" y1="15" x2="12" y2="3"/>
       </svg>
-      <span id="downloadBtnText">Select a quality first</span>
+      <span id="dlTxt">Select a quality first</span>
     </button>
   </div>
 
-  <!-- Status -->
-  <div class="status hidden" id="statusEl"></div>
-
-</div><!-- .card -->
+  <div class="sbox hidden" id="sbox"></div>
+</div>
 
 <script>
-  const urlEl          = document.getElementById('url');
-  const checkBtn       = document.getElementById('checkBtn');
-  const qualitySection = document.getElementById('qualitySection');
-  const videoTitleEl   = document.getElementById('videoTitle');
-  const videoDurEl     = document.getElementById('videoDuration');
-  const formatsGrid    = document.getElementById('formatsGrid');
-  const downloadBtn    = document.getElementById('downloadBtn');
-  const downloadBtnTxt = document.getElementById('downloadBtnText');
-  const statusEl       = document.getElementById('statusEl');
+  const urlEl   = document.getElementById('url');
+  const checkBtn= document.getElementById('checkBtn');
+  const qsec    = document.getElementById('qsec');
+  const vtitle  = document.getElementById('vtitle');
+  const vdur    = document.getElementById('vdur');
+  const fgrid   = document.getElementById('fgrid');
+  const dlBtn   = document.getElementById('dlBtn');
+  const dlTxt   = document.getElementById('dlTxt');
+  const sbox    = document.getElementById('sbox');
+  const card    = document.getElementById('card');
 
-  let selectedFormat = null;
-  let pollTimer      = null;
+  let selFmt = null, pollTimer = null;
 
   /* ── Helpers ── */
-
-  function showStatus(html, type) {
-    statusEl.innerHTML = html;
-    statusEl.className = 'status ' + type;
-    statusEl.classList.remove('hidden');
+  function st(html, type) {
+    sbox.innerHTML = html;
+    sbox.className = 'sbox ' + type;
+    sbox.classList.remove('hidden');
   }
-  function hideStatus() { statusEl.classList.add('hidden'); }
-
-  function fmtDuration(secs) {
-    if (!secs) return '';
-    const h = Math.floor(secs / 3600);
-    const m = Math.floor((secs % 3600) / 60);
-    const s = Math.floor(secs % 60);
-    return h > 0
-      ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
-      : `${m}:${String(s).padStart(2,'0')}`;
+  function clrSt() { sbox.classList.add('hidden'); }
+  function dur(s) {
+    if (!s) return '';
+    const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sc=Math.floor(s%60);
+    return h ? `${h}:${p2(m)}:${p2(sc)}` : `${m}:${p2(sc)}`;
+  }
+  const p2 = n => String(n).padStart(2,'0');
+  function esc(s) {
+    return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  function esc(str) {
-    return String(str ?? '')
-      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
+  /* ── Main card 3-D tilt ── */
+  let ticking = false;
+  document.addEventListener('mousemove', e => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      const r  = card.getBoundingClientRect();
+      const cx = r.left + r.width  / 2;
+      const cy = r.top  + r.height / 2;
+      const dx = (e.clientX - cx) / (window.innerWidth  / 2);
+      const dy = (e.clientY - cy) / (window.innerHeight / 2);
+      card.style.transform = `perspective(1100px) rotateY(${dx*3.5}deg) rotateX(${-dy*2.5}deg)`;
+      ticking = false;
+    });
+  });
+  document.addEventListener('mouseleave', () => { card.style.transform = ''; });
 
-  /* ── Step 1: Fetch formats ── */
+  /* ── Step 1: Check ── */
+  checkBtn.addEventListener('click', check);
+  urlEl.addEventListener('keydown', e => e.key === 'Enter' && check());
 
-  checkBtn.addEventListener('click', fetchFormats);
-  urlEl.addEventListener('keydown', e => { if (e.key === 'Enter') fetchFormats(); });
-
-  async function fetchFormats() {
+  async function check() {
     const url = urlEl.value.trim();
-    if (!url) { showStatus('Please enter a YouTube URL.', 'error'); return; }
+    if (!url) { st('Please enter a YouTube URL.', 'error'); return; }
 
     checkBtn.disabled = true;
-    checkBtn.innerHTML = `<span class="spinner"></span> Checking…`;
-    qualitySection.classList.add('hidden');
-    showStatus('<span class="spinner"></span> Fetching available qualities…', 'info');
+    checkBtn.innerHTML = `<span class="sp"></span>Checking…`;
+    qsec.classList.add('hidden');
+    st('<span class="sp"></span>Fetching available qualities…', 'info');
 
     try {
       const res  = await fetch('/formats?url=' + encodeURIComponent(url));
       const data = await res.json();
 
-      if (!res.ok) {
-        showStatus('&#9888; ' + esc(data.error || 'Could not fetch formats.'), 'error');
-        return;
-      }
+      if (!res.ok)           { st('⚠ ' + esc(data.error || 'Could not fetch formats.'), 'error'); return; }
+      if (!data.formats?.length) { st('No downloadable formats found.', 'error'); return; }
 
-      if (!data.formats || data.formats.length === 0) {
-        showStatus('No downloadable formats found for this video.', 'error');
-        return;
-      }
+      vtitle.textContent = data.title;
+      vdur.textContent   = data.duration ? '⏱ ' + dur(data.duration) : '';
 
-      // Populate header
-      videoTitleEl.textContent = data.title;
-      videoDurEl.textContent   = data.duration ? '⏱ ' + fmtDuration(data.duration) : '';
-
-      // Build quality cards
-      formatsGrid.innerHTML = '';
-      selectedFormat = null;
-      downloadBtn.disabled = true;
-      downloadBtnTxt.textContent = 'Select a quality first';
+      fgrid.innerHTML = '';
+      selFmt = null;
+      dlBtn.disabled = true;
+      dlTxt.textContent = 'Select a quality first';
 
       data.formats.forEach((fmt, i) => {
-        const card = document.createElement('label');
-        card.className = 'format-card';
-        card.style.animationDelay = `${i * 55}ms`;
-        card.innerHTML =
-          `<input type="radio" name="quality" value="${esc(fmt.format_key)}" />` +
-          `<span class="format-res">${esc(fmt.label)}</span>` +
-          `<span class="format-size">${fmt.size_mb ? '~' + fmt.size_mb + ' MB' : '—'}</span>`;
+        const fc = document.createElement('label');
+        fc.className = 'fcard';
+        fc.style.animationDelay = `${i * 65}ms`;
+        fc.innerHTML =
+          `<input type="radio" name="q" value="${esc(fmt.format_key)}">` +
+          `<span class="fres">${esc(fmt.label)}</span>` +
+          `<span class="fsz">${fmt.size_mb ? '~' + fmt.size_mb + ' MB' : '—'}</span>`;
 
-        card.addEventListener('click', () => {
-          document.querySelectorAll('.format-card').forEach(c => c.classList.remove('selected'));
-          card.classList.add('selected');
-          selectedFormat = fmt.format_key;
-          downloadBtn.disabled = false;
-          downloadBtnTxt.textContent = `Download ${esc(fmt.label)}`;
+        /* Per-card mouse-tracking 3-D tilt */
+        fc.addEventListener('mousemove', e => {
+          if (window.innerWidth < 520) return;
+          const r  = fc.getBoundingClientRect();
+          const x  = (e.clientX - r.left  - r.width  / 2) / (r.width  / 2);
+          const y  = (e.clientY - r.top   - r.height / 2) / (r.height / 2);
+          fc.style.transform     = `perspective(260px) rotateX(${-y*20}deg) rotateY(${x*20}deg) scale(1.07) translateZ(10px)`;
+          fc.style.boxShadow     = `${-x*14}px ${-y*14}px 28px rgba(0,0,0,.45), 0 0 22px rgba(255,0,0,.18)`;
+          fc.style.borderColor   = 'rgba(255,255,255,.28)';
+        });
+        fc.addEventListener('mouseleave', () => {
+          fc.style.transform   = fc.classList.contains('sel') ? 'translateY(-5px) scale(1.02)' : '';
+          fc.style.boxShadow   = '';
+          fc.style.borderColor = '';
         });
 
-        formatsGrid.appendChild(card);
+        fc.addEventListener('click', () => {
+          document.querySelectorAll('.fcard').forEach(c => {
+            c.classList.remove('sel');
+            c.style.transform = c.style.boxShadow = '';
+          });
+          fc.classList.add('sel');
+          selFmt = fmt.format_key;
+          dlBtn.disabled = false;
+          dlTxt.textContent = `Download ${esc(fmt.label)}`;
+        });
+
+        fgrid.appendChild(fc);
       });
 
-      qualitySection.classList.remove('hidden');
-      hideStatus();
-
+      qsec.classList.remove('hidden');
+      clrSt();
     } catch {
-      showStatus('Network error — is the server running?', 'error');
+      st('Network error — is the server running?', 'error');
     } finally {
       checkBtn.disabled = false;
-      checkBtn.innerHTML = `
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-        </svg>
-        Check`;
+      checkBtn.innerHTML =
+        `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Check`;
     }
   }
 
-  /* ── Step 2: Start download ── */
-
-  downloadBtn.addEventListener('click', async () => {
-    if (!selectedFormat) return;
+  /* ── Step 2: Download ── */
+  dlBtn.addEventListener('click', async () => {
+    if (!selFmt) return;
     if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
 
-    downloadBtn.disabled = true;
-    downloadBtnTxt.textContent = 'Starting…';
-    showStatus('<span class="spinner"></span> Queuing download…', 'info');
+    dlBtn.disabled = true;
+    dlTxt.textContent = 'Starting…';
+    st('<span class="sp"></span>Queuing download…', 'info');
 
     try {
       const body = new FormData();
       body.append('url', urlEl.value.trim());
-      body.append('format_id', selectedFormat);
-
-      const res  = await fetch('/download', { method: 'POST', body });
+      body.append('format_id', selFmt);
+      const res  = await fetch('/download', { method:'POST', body });
       const data = await res.json();
-
       if (!res.ok) {
-        showStatus('&#9888; ' + esc(data.error || 'Bad request.'), 'error');
-        downloadBtn.disabled = false;
-        downloadBtnTxt.textContent = 'Try Again';
-        return;
+        st('⚠ ' + esc(data.error || 'Bad request.'), 'error');
+        dlBtn.disabled = false; dlTxt.textContent = 'Try Again'; return;
       }
-
       poll(data.job_id);
     } catch {
-      showStatus('Network error — please try again.', 'error');
-      downloadBtn.disabled = false;
-      downloadBtnTxt.textContent = 'Try Again';
+      st('Network error. Please try again.', 'error');
+      dlBtn.disabled = false; dlTxt.textContent = 'Try Again';
     }
   });
 
   /* ── Polling ── */
-
   async function poll(jobId) {
     try {
       const res  = await fetch('/status/' + jobId);
       const data = await res.json();
-
       if (data.status === 'completed') {
-        // Auto-trigger browser file download
-        const a = document.createElement('a');
-        a.href     = '/file/' + jobId;
-        a.download = data.filename || 'video.mp4';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-
-        showStatus(
-          '&#10003; Download started — <strong>' + esc(data.filename) + '</strong>',
-          'success'
-        );
-        downloadBtn.disabled = false;
-        downloadBtnTxt.textContent = 'Download Again';
-
+        const a = Object.assign(document.createElement('a'), { href:'/file/'+jobId, download: data.filename||'video.mp4' });
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        st('✓ Downloading: <strong>' + esc(data.filename) + '</strong>', 'success');
+        dlBtn.disabled = false; dlTxt.textContent = 'Download Again';
       } else if (data.status === 'failed') {
-        showStatus('&#9888; ' + esc(data.error || 'Download failed.'), 'error');
-        downloadBtn.disabled = false;
-        downloadBtnTxt.textContent = 'Try Again';
-
+        st('⚠ ' + esc(data.error || 'Download failed.'), 'error');
+        dlBtn.disabled = false; dlTxt.textContent = 'Try Again';
       } else {
-        showStatus('<span class="spinner"></span> Downloading — please wait…', 'info');
+        st('<span class="sp"></span>Downloading — please wait…', 'info');
         pollTimer = setTimeout(() => poll(jobId), 2000);
       }
     } catch {
-      showStatus('Lost connection while checking status.', 'error');
-      downloadBtn.disabled = false;
-      downloadBtnTxt.textContent = 'Try Again';
+      st('Lost connection while checking status.', 'error');
+      dlBtn.disabled = false; dlTxt.textContent = 'Try Again';
     }
   }
 </script>
