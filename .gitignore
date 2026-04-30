@@ -24,6 +24,9 @@ env/
 downloads/*
 !downloads/.gitkeep
 
+# Static (keep folder and all files including Google verification)
+!app/static/
+
 # IDE
 .vscode/
 .idea/
