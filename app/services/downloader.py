@@ -80,24 +80,47 @@ class DownloaderService:
             self._jobs[job_id].update(kwargs)
 
     def get_formats(self, url: str) -> dict:
+        _warnings: list[str] = []
+
+        class _Logger:
+            """Capture yt-dlp warnings so we can surface them to the user."""
+            def debug(self, msg): pass
+            def info(self, msg): pass
+            def warning(self, msg): _warnings.append(msg)
+            def error(self, msg): _warnings.append(f"ERROR: {msg}")
+
         ydl_opts = {
             "quiet": True,
-            "no_warnings": True,
+            "no_warnings": False,
+            "logger": _Logger(),
             "ffmpeg_location": _FFMPEG_PATH,
-            # Very permissive format — we only need the formats list, not a
-            # specific quality. Without this yt-dlp applies its default selector
-            # which can raise "Requested format is not available" for some videos.
             "format": "bestvideo*+bestaudio*/bestvideo+bestaudio/best",
             "ignore_no_formats_error": True,
             # Enable JS runtime(s) for YouTube signature/n-challenge solving.
             "js_runtimes": _JS_RUNTIMES,
             # Let yt-dlp pick the best player clients automatically.
-            # Its defaults adapt to YouTube changes with each release.
         }
         _apply_auth(ydl_opts)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-        return _parse_formats(info)
+
+        result = _parse_formats(info)
+
+        # If we got a title but zero downloadable formats, surface yt-dlp warnings
+        if not result["formats"]:
+            if _warnings:
+                logger.warning("No formats for %s — yt-dlp warnings: %s", url, _warnings)
+            # Raise so the API returns a useful error instead of empty formats
+            hint = ""
+            if any("429" in w for w in _warnings):
+                hint = " YouTube is rate-limiting this server (HTTP 429). Try again in a few minutes."
+            elif any("PO Token" in w or "Sign in" in w for w in _warnings):
+                hint = " YouTube requires authentication for this video from this server."
+            raise yt_dlp.utils.DownloadError(
+                f"No downloadable formats found for this video.{hint}"
+            )
+
+        return result
 
     def download(self, job_id: str, url: str, format_id: str = "best") -> None:
         with self._lock:
@@ -185,23 +208,25 @@ def _parse_formats(info: dict) -> dict:
 
 
 def _best_video_for_height(formats: list, max_height: int) -> Optional[dict]:
-    # Prefer DASH video-only streams — matches what FORMAT_MAP actually downloads
-    candidates = [
+    """Find the best video format at or below *max_height*.
+
+    Priority order:
+      1. DASH video-only streams  (acodec == 'none')
+      2. Any stream with video    (progressive, HLS, etc.)
+    """
+    video_fmts = [
         f for f in formats
-        if f.get("height") and f["height"] <= max_height
-        and f.get("vcodec") and f["vcodec"] != "none"
-        and f.get("acodec") == "none"
+        if f.get("height") and f.get("vcodec") and f["vcodec"] != "none"
     ]
-    if not candidates:
-        # Fall back to progressive (video+audio combined)
-        candidates = [
-            f for f in formats
-            if f.get("height") and f["height"] <= max_height
-            and f.get("vcodec") and f["vcodec"] != "none"
-        ]
-    if not candidates:
-        return None
-    return max(candidates, key=lambda f: (f.get("height") or 0, f.get("vbr") or f.get("tbr") or 0))
+    # First try DASH video-only at the target height
+    dash = [f for f in video_fmts if f.get("acodec") == "none" and f["height"] <= max_height]
+    if dash:
+        return max(dash, key=lambda f: (f["height"], f.get("vbr") or f.get("tbr") or 0))
+
+    # Fallback: any stream with video (progressive, HLS muxed, etc.)
+    any_vid = [f for f in video_fmts if f["height"] <= max_height]
+    if any_vid:
+        return max(any_vid, key=lambda f: (f["height"], f.get("vbr") or f.get("tbr") or 0))
 
 
 def _best_audio_size(formats: list) -> int:
