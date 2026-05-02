@@ -22,6 +22,8 @@ env/
 
 # YouTube cookies (contains sensitive session data)
 cookies.txt
+cookies_yt_only.txt
+cookies_yt_only.b64
 
 # OAuth2 token export (contains refresh token — never commit)
 oauth2_token.b64
