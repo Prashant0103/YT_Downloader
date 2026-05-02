@@ -58,6 +58,13 @@ class DownloaderService:
             # which can raise "Requested format is not available" for some videos.
             "format": "bestvideo*+bestaudio*/bestvideo+bestaudio/best",
             "ignore_no_formats_error": True,
+            # mweb/ios/tv clients have lighter PO-token requirements than the
+            # default web client, which helps on datacenter IPs (e.g. Render).
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["mweb", "ios", "tv"],
+                }
+            },
         }
         _apply_auth(ydl_opts)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -86,6 +93,12 @@ class DownloaderService:
             "quiet": True,
             "no_warnings": False,
             "ffmpeg_location": _FFMPEG_PATH,
+            # Same client fallback chain used in get_formats.
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["mweb", "ios", "tv"],
+                }
+            },
         }
         _apply_auth(ydl_opts)
 
@@ -178,8 +191,8 @@ def _best_audio_size(formats: list) -> int:
 
 
 def _apply_auth(opts: dict) -> None:
-    """Attach cookies if available. OAuth2 plugin causes HTTP 400 on current
-    YouTube API so only the cookiefile path is used."""
+    """Attach cookies if available (set YOUTUBE_COOKIES env var on Render).
+    OAuth2 login no longer works with yt-dlp per the official wiki."""
     cf = get_cookie_file()
     if cf and cf.exists():
         opts["cookiefile"] = str(cf)

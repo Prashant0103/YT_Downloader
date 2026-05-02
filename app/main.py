@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.routes.download import router
-from app.utils.file_handler import ensure_downloads_dir, setup_cookies, setup_oauth2
+from app.utils.file_handler import ensure_downloads_dir, setup_cookies
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,8 +20,7 @@ _STATIC_DIR = Path(__file__).parent / "static"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ensure_downloads_dir()
-    setup_oauth2()   # OAuth2 tokens (priority 1 — long-lived, works on Render)
-    setup_cookies()  # Cookie file / env var (priority 2 — local fallback)
+    setup_cookies()  # Load YOUTUBE_COOKIES env var cookie file if set
     yield
 
 
