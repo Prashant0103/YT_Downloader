@@ -93,17 +93,13 @@ async def debug_test():
         def warning(self, msg): warnings.append(msg)
         def error(self, msg): warnings.append(f"ERROR: {msg}")
 
-    ydl_opts = {
-        "quiet": True,
-        "no_warnings": False,
+    from app.services.downloader import _base_opts
+    ydl_opts = _base_opts()
+    ydl_opts.update({
         "logger": WarningLogger(),
         "format": "bestvideo*+bestaudio*/bestvideo+bestaudio/best",
         "ignore_no_formats_error": True,
-        "js_runtimes": _JS_RUNTIMES,
-    }
-    cf = get_cookie_file()
-    if cf and cf.exists():
-        ydl_opts["cookiefile"] = str(cf)
+    })
 
     loop = asyncio.get_event_loop()
 
@@ -121,10 +117,11 @@ async def debug_test():
                 "title": info.get("title", "?"),
                 "total_formats": len(formats),
                 "video_formats": len(video_fmts),
+                "video_heights": sorted(set(f["height"] for f in video_fmts), reverse=True),
                 "sample_formats": [
                     {"id": f.get("format_id"), "height": f.get("height"),
                      "vcodec": f.get("vcodec"), "acodec": f.get("acodec")}
-                    for f in formats[:8]
+                    for f in video_fmts[:12]
                 ],
                 "warnings": warnings,
                 "cookie_used": bool(ydl_opts.get("cookiefile")),

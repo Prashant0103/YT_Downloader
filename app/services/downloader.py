@@ -72,13 +72,6 @@ def _base_opts() -> dict:
         "no_warnings": False,
         "ffmpeg_location": _FFMPEG_PATH,
         "js_runtimes": _JS_RUNTIMES,
-        # Use android_vr client: skips the webpage download (avoids 429),
-        # works without cookies from any IP, returns all DASH resolutions.
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["android_vr", "web"],
-            }
-        },
     }
     _apply_auth(opts)
     return opts
@@ -203,7 +196,7 @@ def _parse_formats(info: dict) -> dict:
 
         result.append({
             "label": f"{h}p",
-            "format_key": str(res),
+            "format_key": str(h),
             "size_mb": size_mb,
         })
 
