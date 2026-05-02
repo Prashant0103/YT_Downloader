@@ -108,8 +108,6 @@ class DownloaderService:
             "ignore_no_formats_error": True,
             "js_runtimes": _JS_RUNTIMES,
         }
-        if _IMPERSONATE_TARGET:
-            ydl_opts["impersonate"] = _IMPERSONATE_TARGET
         _apply_auth(ydl_opts)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -156,8 +154,6 @@ class DownloaderService:
             "ffmpeg_location": _FFMPEG_PATH,
             "js_runtimes": _JS_RUNTIMES,
         }
-        if _IMPERSONATE_TARGET:
-            ydl_opts["impersonate"] = _IMPERSONATE_TARGET
         _apply_auth(ydl_opts)
 
         try:
