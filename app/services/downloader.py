@@ -68,27 +68,24 @@ class JobStatus(str, Enum):
 def _base_opts() -> dict:
     """Options common to both format-listing and downloading.
 
-    Uses the android_vr player client which:
-    - Does NOT require Proof-of-Origin (PO) tokens
-    - Does NOT require JS challenge solving
-    - Is significantly less rate-limited from datacenter/cloud IPs than
-      the default 'web' client, making it the primary fix for HTTP 429
-      errors on hosted deployments (e.g. Render).
+    Client strategy (all three bypass YouTube PO-token requirements):
+      android_vr  - primary; no PO token, no JS challenge, datacenter-friendly
+      tv_embedded - YouTube TV embedded player; works for bot-challenged videos
+      ios         - YouTube iOS app; broad fallback
+
+    NOTE: player_skip intentionally NOT set.  Skipping the webpage removes the
+    visitor-session context that some videos need, causing YouTube to trigger
+    'confirm you are not a bot' even with valid cookies.  With real cookies
+    the webpage loads as an authenticated session (no 429 either).
     """
     opts = {
         "quiet": True,
         "no_warnings": False,
         "ffmpeg_location": _FFMPEG_PATH,
         "js_runtimes": _JS_RUNTIMES,
-        # Force android_vr client; fall back to mweb (also PO-token-free).
-        # player_skip=["webpage"] is critical on cloud hosts: yt-dlp normally
-        # downloads the YouTube HTML page first to extract metadata, which
-        # triggers 429 from datacenter IPs. Skipping it makes yt-dlp go
-        # straight to the android_vr player API, bypassing the rate limit.
         "extractor_args": {
             "youtube": {
-                "player_client": ["android_vr", "mweb"],
-                "player_skip": ["webpage"],
+                "player_client": ["android_vr", "tv_embedded", "ios"],
             }
         },
         # Polite request pacing to reduce 429 likelihood
