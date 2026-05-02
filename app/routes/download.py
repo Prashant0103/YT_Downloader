@@ -65,12 +65,14 @@ async def debug_info():
     cookie_info["env_var_set"] = bool(yt_cookies_env.strip())
     cookie_info["env_var_length"] = len(yt_cookies_env)
 
+    from app.services.downloader import _IMPERSONATE_TARGET
     return JSONResponse(content={
         "node_found": node_path or False,
         "deno_found": deno_path or False,
         "js_runtimes_config": {k: str(v) for k, v in _JS_RUNTIMES.items()},
         "yt_dlp_version": yt_dlp.version.__version__,
         "yt_dlp_ejs_installed": ejs_installed,
+        "impersonate_enabled": _IMPERSONATE_TARGET is not None,
         "cookie_info": cookie_info,
         "path_env": os.environ.get("PATH", "")[:500],
     })

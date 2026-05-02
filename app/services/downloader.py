@@ -45,6 +45,16 @@ def _build_js_runtimes() -> dict:
 
 _JS_RUNTIMES: dict = _build_js_runtimes()
 
+# Browser impersonation — makes HTTP requests look like real Chrome.
+# Critical on datacenter IPs where YouTube blocks by TLS fingerprint.
+_IMPERSONATE_TARGET = None
+try:
+    from yt_dlp.networking.impersonate import ImpersonateTarget
+    _IMPERSONATE_TARGET = ImpersonateTarget("chrome")
+    logger.info("Browser impersonation enabled (chrome)")
+except Exception:
+    logger.warning("curl_cffi not available — browser impersonation disabled")
+
 _RESOLUTIONS = [2160, 1440, 1080, 720, 480, 360]
 
 FORMAT_MAP: dict[str, str] = {
@@ -96,10 +106,10 @@ class DownloaderService:
             "ffmpeg_location": _FFMPEG_PATH,
             "format": "bestvideo*+bestaudio*/bestvideo+bestaudio/best",
             "ignore_no_formats_error": True,
-            # Enable JS runtime(s) for YouTube signature/n-challenge solving.
             "js_runtimes": _JS_RUNTIMES,
-            # Let yt-dlp pick the best player clients automatically.
         }
+        if _IMPERSONATE_TARGET:
+            ydl_opts["impersonate"] = _IMPERSONATE_TARGET
         _apply_auth(ydl_opts)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -144,11 +154,10 @@ class DownloaderService:
             "quiet": True,
             "no_warnings": False,
             "ffmpeg_location": _FFMPEG_PATH,
-            # Enable JS runtime(s) for YouTube signature/n-challenge solving.
             "js_runtimes": _JS_RUNTIMES,
-            # Let yt-dlp pick the best player clients automatically.
-            # Its defaults adapt to YouTube changes with each release.
         }
+        if _IMPERSONATE_TARGET:
+            ydl_opts["impersonate"] = _IMPERSONATE_TARGET
         _apply_auth(ydl_opts)
 
         try:
