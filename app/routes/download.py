@@ -72,7 +72,7 @@ async def debug_info():
         "js_runtimes_config": {k: str(v) for k, v in _JS_RUNTIMES.items()},
         "yt_dlp_version": yt_dlp.version.__version__,
         "yt_dlp_ejs_installed": ejs_installed,
-        "player_client": "android_vr,web",
+        "player_client": "android_vr,mweb (configured via extractor_args)",
         "cookie_info": cookie_info,
         "path_env": os.environ.get("PATH", "")[:500],
     })

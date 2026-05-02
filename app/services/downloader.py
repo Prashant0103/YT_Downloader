@@ -66,12 +66,33 @@ class JobStatus(str, Enum):
 # ---------------------------------------------------------------------------
 
 def _base_opts() -> dict:
-    """Options common to both format-listing and downloading."""
+    """Options common to both format-listing and downloading.
+
+    Uses the android_vr player client which:
+    - Does NOT require Proof-of-Origin (PO) tokens
+    - Does NOT require JS challenge solving
+    - Is significantly less rate-limited from datacenter/cloud IPs than
+      the default 'web' client, making it the primary fix for HTTP 429
+      errors on hosted deployments (e.g. Render).
+    """
     opts = {
         "quiet": True,
         "no_warnings": False,
         "ffmpeg_location": _FFMPEG_PATH,
         "js_runtimes": _JS_RUNTIMES,
+        # Force android_vr client; fall back to mweb (also PO-token-free)
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android_vr", "mweb"],
+            }
+        },
+        # Polite request pacing to reduce 429 likelihood
+        "sleep_interval_requests": 1,
+        "max_sleep_interval": 5,
+        # Retry on transient network / 429 errors
+        "retries": 6,
+        "fragment_retries": 6,
+        "retry_sleep_functions": {"http": lambda n: 2 ** n},  # 2 4 8 16 32 64 s
     }
     _apply_auth(opts)
     return opts
