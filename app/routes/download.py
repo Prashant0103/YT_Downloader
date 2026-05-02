@@ -32,8 +32,9 @@ async def index(request: Request):
 
 @router.get("/debug")
 async def debug_info():
-    """Diagnostic endpoint — shows JS runtime availability and yt-dlp config."""
+    """Diagnostic endpoint — shows JS runtime, cookie, and yt-dlp status."""
     import yt_dlp
+    from app.utils.file_handler import get_cookie_file
 
     node_path = shutil.which("node")
     deno_path = shutil.which("deno")
@@ -46,14 +47,96 @@ async def debug_info():
     except ImportError:
         pass
 
+    # Check cookie status
+    cookie_file = get_cookie_file()
+    cookie_info = {"loaded": False}
+    if cookie_file:
+        cookie_info["loaded"] = True
+        cookie_info["path"] = str(cookie_file)
+        cookie_info["exists"] = cookie_file.exists()
+        if cookie_file.exists():
+            content = cookie_file.read_text(encoding="utf-8", errors="replace")
+            cookie_info["lines"] = len(content.splitlines())
+            cookie_info["size_bytes"] = len(content)
+            cookie_info["first_80_chars"] = content[:80]
+
+    # Check env var
+    yt_cookies_env = os.environ.get("YOUTUBE_COOKIES", "")
+    cookie_info["env_var_set"] = bool(yt_cookies_env.strip())
+    cookie_info["env_var_length"] = len(yt_cookies_env)
+
     return JSONResponse(content={
         "node_found": node_path or False,
         "deno_found": deno_path or False,
         "js_runtimes_config": {k: str(v) for k, v in _JS_RUNTIMES.items()},
         "yt_dlp_version": yt_dlp.version.__version__,
         "yt_dlp_ejs_installed": ejs_installed,
+        "cookie_info": cookie_info,
         "path_env": os.environ.get("PATH", "")[:500],
     })
+
+
+@router.get("/debug/test")
+async def debug_test():
+    """Test fetching formats for a known video and return raw results."""
+    import yt_dlp
+    from app.utils.file_handler import get_cookie_file
+
+    test_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    warnings = []
+
+    class WarningLogger:
+        def debug(self, msg): pass
+        def info(self, msg): pass
+        def warning(self, msg): warnings.append(msg)
+        def error(self, msg): warnings.append(f"ERROR: {msg}")
+
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": False,
+        "logger": WarningLogger(),
+        "format": "bestvideo*+bestaudio*/bestvideo+bestaudio/best",
+        "ignore_no_formats_error": True,
+        "js_runtimes": _JS_RUNTIMES,
+    }
+    cf = get_cookie_file()
+    if cf and cf.exists():
+        ydl_opts["cookiefile"] = str(cf)
+
+    loop = asyncio.get_event_loop()
+
+    def _fetch():
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(test_url, download=False)
+            formats = info.get("formats", [])
+            video_fmts = [
+                f for f in formats
+                if f.get("height") and f.get("vcodec") and f["vcodec"] != "none"
+            ]
+            return {
+                "success": True,
+                "title": info.get("title", "?"),
+                "total_formats": len(formats),
+                "video_formats": len(video_fmts),
+                "sample_formats": [
+                    {"id": f.get("format_id"), "height": f.get("height"),
+                     "vcodec": f.get("vcodec"), "acodec": f.get("acodec")}
+                    for f in formats[:8]
+                ],
+                "warnings": warnings,
+                "cookie_used": bool(ydl_opts.get("cookiefile")),
+            }
+        except Exception as exc:
+            return {
+                "success": False,
+                "error": str(exc),
+                "warnings": warnings,
+                "cookie_used": bool(ydl_opts.get("cookiefile")),
+            }
+
+    result = await loop.run_in_executor(_executor, _fetch)
+    return JSONResponse(content=result)
 
 
 @router.get("/formats")
