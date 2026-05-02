@@ -22,7 +22,6 @@ _oauth2_active: bool = False
 # ---------------------------------------------------------------------------
 
 def _ytdlp_cache_dir() -> Path:
-    # yt-dlp uses ~/.cache/yt-dlp on all platforms (Windows included)
     xdg = os.environ.get("XDG_CACHE_HOME", "")
     return (Path(xdg) if xdg else Path.home() / ".cache") / "yt-dlp"
 
@@ -54,7 +53,6 @@ def setup_oauth2() -> None:
             logger.warning("Failed to restore OAuth2 token from env var: %s", exc)
         return
 
-    # Local dev: token already in yt-dlp cache from a previous setup_oauth2.py run
     if _OAUTH2_CACHE_FILE.exists():
         _oauth2_active = True
         logger.info("YouTube OAuth2 token found in local yt-dlp cache")
@@ -64,7 +62,7 @@ def setup_cookies() -> None:
     """Locate the cookie source at startup (file -> env var -> none)."""
     global _cookie_file
 
-    # Priority 1: cookies.txt written by refresh_cookies.py
+    # Priority 1: cookies.txt in project root (local dev)
     if _COOKIES_FILE.exists():
         _cookie_file = _COOKIES_FILE
         logger.info("YouTube cookies loaded from %s (%d bytes)",
@@ -72,15 +70,20 @@ def setup_cookies() -> None:
         return
 
     # Priority 2: YOUTUBE_COOKIES environment variable (Render / CI)
-    # Always re-write the file on startup to pick up env var changes.
-    content = os.environ.get("YOUTUBE_COOKIES", "").strip()
-    if content:
+    raw = os.environ.get("YOUTUBE_COOKIES", "").strip()
+    if raw:
+        # Render stores env vars as single-line strings where newlines become
+        # literal \n (two characters).  Restore actual newlines so the Netscape
+        # cookie file is valid.
+        content = raw.replace("\\n", "\n")
         _ENV_COOKIE_FILE.write_text(content, encoding="utf-8")
         _cookie_file = _ENV_COOKIE_FILE
+
+        lines = [l for l in content.splitlines() if l.strip() and not l.startswith("#")]
         logger.info(
-            "YouTube cookies written from YOUTUBE_COOKIES env var "
-            "(%d chars -> %s, %d bytes on disk)",
-            len(content), _ENV_COOKIE_FILE, _ENV_COOKIE_FILE.stat().st_size,
+            "YouTube cookies written from env var -> %s  "
+            "(%d cookie lines, %d bytes on disk)",
+            _ENV_COOKIE_FILE, len(lines), _ENV_COOKIE_FILE.stat().st_size,
         )
         return
 

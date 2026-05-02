@@ -66,14 +66,13 @@ async def debug_info():
     cookie_info["env_var_length"] = len(yt_cookies_env)
     cookie_info["env_var_preview"] = yt_cookies_env[:120] if yt_cookies_env else ""
 
-    from app.services.downloader import _IMPERSONATE_TARGET
     return JSONResponse(content={
         "node_found": node_path or False,
         "deno_found": deno_path or False,
         "js_runtimes_config": {k: str(v) for k, v in _JS_RUNTIMES.items()},
         "yt_dlp_version": yt_dlp.version.__version__,
         "yt_dlp_ejs_installed": ejs_installed,
-        "impersonate_enabled": _IMPERSONATE_TARGET is not None,
+        "player_client": "android_vr,web",
         "cookie_info": cookie_info,
         "path_env": os.environ.get("PATH", "")[:500],
     })

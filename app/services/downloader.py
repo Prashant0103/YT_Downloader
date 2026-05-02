@@ -1,5 +1,4 @@
 import logging
-import os
 import shutil
 import threading
 from pathlib import Path
@@ -9,7 +8,7 @@ from typing import Optional
 import imageio_ffmpeg
 import yt_dlp
 
-from app.utils.file_handler import DOWNLOADS_DIR, get_cookie_file, is_oauth2_active
+from app.utils.file_handler import DOWNLOADS_DIR, get_cookie_file
 
 # Bundled static binary — works on Render and any env without system ffmpeg
 _FFMPEG_PATH: str = imageio_ffmpeg.get_ffmpeg_exe()
@@ -21,9 +20,7 @@ def _build_js_runtimes() -> dict:
     """Build a js_runtimes dict with every available JS runtime.
 
     yt-dlp needs a JS runtime + yt-dlp-ejs scripts to solve YouTube's
-    signature and n-parameter challenges.  The default is Deno-only,
-    but Node.js is far more commonly available (Render, most servers).
-    We enable both so whichever is installed will be used.
+    signature and n-parameter challenges.
     """
     runtimes: dict = {}
     if shutil.which("deno"):
@@ -32,7 +29,6 @@ def _build_js_runtimes() -> dict:
     if node_path:
         runtimes["node"] = {"path": node_path}
     if not runtimes:
-        # Fallback: let yt-dlp try its default (deno) and fail gracefully
         runtimes["deno"] = {}
         logger.warning(
             "No JS runtime (node/deno) found on PATH. "
@@ -44,16 +40,6 @@ def _build_js_runtimes() -> dict:
 
 
 _JS_RUNTIMES: dict = _build_js_runtimes()
-
-# Browser impersonation — makes HTTP requests look like real Chrome.
-# Critical on datacenter IPs where YouTube blocks by TLS fingerprint.
-_IMPERSONATE_TARGET = None
-try:
-    from yt_dlp.networking.impersonate import ImpersonateTarget
-    _IMPERSONATE_TARGET = ImpersonateTarget("chrome")
-    logger.info("Browser impersonation enabled (chrome)")
-except Exception:
-    logger.warning("curl_cffi not available — browser impersonation disabled")
 
 _RESOLUTIONS = [2160, 1440, 1080, 720, 480, 360]
 
@@ -75,6 +61,29 @@ class JobStatus(str, Enum):
     FAILED = "failed"
 
 
+# ---------------------------------------------------------------------------
+# Shared ydl_opts builder
+# ---------------------------------------------------------------------------
+
+def _base_opts() -> dict:
+    """Options common to both format-listing and downloading."""
+    opts = {
+        "quiet": True,
+        "no_warnings": False,
+        "ffmpeg_location": _FFMPEG_PATH,
+        "js_runtimes": _JS_RUNTIMES,
+        # Use android_vr client: skips the webpage download (avoids 429),
+        # works without cookies from any IP, returns all DASH resolutions.
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android_vr", "web"],
+            }
+        },
+    }
+    _apply_auth(opts)
+    return opts
+
+
 class DownloaderService:
     def __init__(self) -> None:
         self._jobs: dict[str, dict] = {}
@@ -90,66 +99,39 @@ class DownloaderService:
             self._jobs[job_id].update(kwargs)
 
     def get_formats(self, url: str) -> dict:
-        """Fetch available formats, retrying on transient 429 errors."""
-        import time
+        """Fetch available formats (single attempt, no retries)."""
+        _warnings: list[str] = []
 
-        max_retries = 3
-        last_warnings: list[str] = []
-        last_result = None
+        class _Logger:
+            def debug(self, msg): pass
+            def info(self, msg): pass
+            def warning(self, msg): _warnings.append(msg)
+            def error(self, msg): _warnings.append(f"ERROR: {msg}")
 
-        for attempt in range(max_retries):
-            _warnings: list[str] = []
+        opts = _base_opts()
+        opts.update({
+            "logger": _Logger(),
+            "format": "bestvideo*+bestaudio*/bestvideo+bestaudio/best",
+            "ignore_no_formats_error": True,
+        })
 
-            class _Logger:
-                def debug(self, msg): pass
-                def info(self, msg): pass
-                def warning(self, msg): _warnings.append(msg)
-                def error(self, msg): _warnings.append(f"ERROR: {msg}")
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
 
-            ydl_opts = {
-                "quiet": True,
-                "no_warnings": False,
-                "logger": _Logger(),
-                "ffmpeg_location": _FFMPEG_PATH,
-                "format": "bestvideo*+bestaudio*/bestvideo+bestaudio/best",
-                "ignore_no_formats_error": True,
-                "js_runtimes": _JS_RUNTIMES,
-            }
-            _apply_auth(ydl_opts)
+        result = _parse_formats(info)
 
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
+        if result["formats"]:
+            return result
 
-            result = _parse_formats(info)
-            last_warnings = _warnings
-            last_result = result
-
-            if result["formats"]:
-                return result  # Success!
-
-            # Check if it's a 429 — worth retrying
-            is_429 = any("429" in w for w in _warnings)
-            if is_429 and attempt < max_retries - 1:
-                wait = [5, 15][attempt]
-                logger.info(
-                    "429 rate-limit on attempt %d/%d for %s — retrying in %ds",
-                    attempt + 1, max_retries, url, wait,
-                )
-                time.sleep(wait)
-                continue
-
-            # Not a 429 or last attempt — break out
-            break
-
-        # All retries exhausted or non-retryable error
-        if last_warnings:
-            logger.warning("No formats for %s — yt-dlp warnings: %s", url, last_warnings)
+        # Surface yt-dlp warnings as a useful error
+        if _warnings:
+            logger.warning("No formats for %s — warnings: %s", url, _warnings)
 
         hint = ""
-        if any("429" in w for w in last_warnings):
+        if any("429" in w for w in _warnings):
             hint = " YouTube is rate-limiting this server (HTTP 429). Try again later."
-        elif any("PO Token" in w or "Sign in" in w for w in last_warnings):
-            hint = " YouTube requires authentication for this video from this server."
+        elif any("Sign in" in w for w in _warnings):
+            hint = " YouTube requires fresh cookies for this video."
         raise yt_dlp.utils.DownloadError(
             f"No downloadable formats found for this video.{hint}"
         )
@@ -168,20 +150,16 @@ class DownloaderService:
         logger.info("Download started  job=%s format=%s url=%s", job_id, format_id, url)
 
         fmt = FORMAT_MAP.get(format_id, FORMAT_MAP["best"])
-        ydl_opts = {
+        opts = _base_opts()
+        opts.update({
             "outtmpl": str(DOWNLOADS_DIR / "%(title)s.%(ext)s"),
             "format": fmt,
             "merge_output_format": "mp4",
             "restrictfilenames": True,
-            "quiet": True,
-            "no_warnings": False,
-            "ffmpeg_location": _FFMPEG_PATH,
-            "js_runtimes": _JS_RUNTIMES,
-        }
-        _apply_auth(ydl_opts)
+        })
 
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 filepath = _resolve_filepath(ydl, info)
 
@@ -237,25 +215,22 @@ def _parse_formats(info: dict) -> dict:
 
 
 def _best_video_for_height(formats: list, max_height: int) -> Optional[dict]:
-    """Find the best video format at or below *max_height*.
-
-    Priority order:
-      1. DASH video-only streams  (acodec == 'none')
-      2. Any stream with video    (progressive, HLS, etc.)
-    """
+    """Find the best video format at or below *max_height*."""
     video_fmts = [
         f for f in formats
         if f.get("height") and f.get("vcodec") and f["vcodec"] != "none"
     ]
-    # First try DASH video-only at the target height
+    # Prefer DASH video-only
     dash = [f for f in video_fmts if f.get("acodec") == "none" and f["height"] <= max_height]
     if dash:
         return max(dash, key=lambda f: (f["height"], f.get("vbr") or f.get("tbr") or 0))
 
-    # Fallback: any stream with video (progressive, HLS muxed, etc.)
+    # Fallback: any stream with video (progressive, HLS, etc.)
     any_vid = [f for f in video_fmts if f["height"] <= max_height]
     if any_vid:
         return max(any_vid, key=lambda f: (f["height"], f.get("vbr") or f.get("tbr") or 0))
+
+    return None
 
 
 def _best_audio_size(formats: list) -> int:
@@ -271,8 +246,7 @@ def _best_audio_size(formats: list) -> int:
 
 
 def _apply_auth(opts: dict) -> None:
-    """Attach cookies if available (set YOUTUBE_COOKIES env var on Render).
-    OAuth2 login no longer works with yt-dlp per the official wiki."""
+    """Attach cookies if available."""
     cf = get_cookie_file()
     if cf and cf.exists():
         opts["cookiefile"] = str(cf)
