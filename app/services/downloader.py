@@ -1,4 +1,6 @@
 import logging
+import os
+import shutil
 import threading
 from pathlib import Path
 from enum import Enum
@@ -13,6 +15,35 @@ from app.utils.file_handler import DOWNLOADS_DIR, get_cookie_file, is_oauth2_act
 _FFMPEG_PATH: str = imageio_ffmpeg.get_ffmpeg_exe()
 
 logger = logging.getLogger(__name__)
+
+
+def _build_js_runtimes() -> dict:
+    """Build a js_runtimes dict with every available JS runtime.
+
+    yt-dlp needs a JS runtime + yt-dlp-ejs scripts to solve YouTube's
+    signature and n-parameter challenges.  The default is Deno-only,
+    but Node.js is far more commonly available (Render, most servers).
+    We enable both so whichever is installed will be used.
+    """
+    runtimes: dict = {}
+    if shutil.which("deno"):
+        runtimes["deno"] = {}
+    node_path = shutil.which("node")
+    if node_path:
+        runtimes["node"] = {"path": node_path}
+    if not runtimes:
+        # Fallback: let yt-dlp try its default (deno) and fail gracefully
+        runtimes["deno"] = {}
+        logger.warning(
+            "No JS runtime (node/deno) found on PATH. "
+            "YouTube downloads will likely fail. Install Node.js or Deno."
+        )
+    else:
+        logger.info("JS runtimes available for yt-dlp: %s", list(runtimes.keys()))
+    return runtimes
+
+
+_JS_RUNTIMES: dict = _build_js_runtimes()
 
 _RESOLUTIONS = [2160, 1440, 1080, 720, 480, 360]
 
@@ -58,13 +89,10 @@ class DownloaderService:
             # which can raise "Requested format is not available" for some videos.
             "format": "bestvideo*+bestaudio*/bestvideo+bestaudio/best",
             "ignore_no_formats_error": True,
-            # mweb/ios/tv clients have lighter PO-token requirements than the
-            # default web client, which helps on datacenter IPs (e.g. Render).
-            "extractor_args": {
-                "youtube": {
-                    "player_client": ["mweb", "ios", "tv"],
-                }
-            },
+            # Enable JS runtime(s) for YouTube signature/n-challenge solving.
+            "js_runtimes": _JS_RUNTIMES,
+            # Let yt-dlp pick the best player clients automatically.
+            # Its defaults adapt to YouTube changes with each release.
         }
         _apply_auth(ydl_opts)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -93,12 +121,10 @@ class DownloaderService:
             "quiet": True,
             "no_warnings": False,
             "ffmpeg_location": _FFMPEG_PATH,
-            # Same client fallback chain used in get_formats.
-            "extractor_args": {
-                "youtube": {
-                    "player_client": ["mweb", "ios", "tv"],
-                }
-            },
+            # Enable JS runtime(s) for YouTube signature/n-challenge solving.
+            "js_runtimes": _JS_RUNTIMES,
+            # Let yt-dlp pick the best player clients automatically.
+            # Its defaults adapt to YouTube changes with each release.
         }
         _apply_auth(ydl_opts)
 
