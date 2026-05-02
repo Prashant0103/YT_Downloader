@@ -1,8 +1,4 @@
 [phases.setup]
-nixPkgs = ["python313", "nodejs"]
-
-[phases.install]
-cmds = ["pip install -r requirements.txt"]
-
-[start]
-cmd = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+# "..." preserves Render's auto-detected packages (Python, pip, etc.)
+# and adds nodejs on top. Without "...", the defaults get overridden.
+nixPkgs = ["...", "nodejs"]

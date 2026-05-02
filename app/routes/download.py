@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+import shutil
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -11,7 +13,7 @@ from starlette.background import BackgroundTask
 
 logger = logging.getLogger(__name__)
 
-from app.services.downloader import DownloaderService
+from app.services.downloader import DownloaderService, _JS_RUNTIMES
 from app.utils.file_handler import DOWNLOADS_DIR
 from app.utils.validator import validate_youtube_url
 
@@ -26,6 +28,32 @@ _executor = ThreadPoolExecutor(max_workers=4)
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     return templates.TemplateResponse(request, "index.html")
+
+
+@router.get("/debug")
+async def debug_info():
+    """Diagnostic endpoint — shows JS runtime availability and yt-dlp config."""
+    import yt_dlp
+
+    node_path = shutil.which("node")
+    deno_path = shutil.which("deno")
+
+    # Check if yt-dlp-ejs is installed
+    ejs_installed = False
+    try:
+        import yt_dlp_ejs  # noqa: F401
+        ejs_installed = True
+    except ImportError:
+        pass
+
+    return JSONResponse(content={
+        "node_found": node_path or False,
+        "deno_found": deno_path or False,
+        "js_runtimes_config": {k: str(v) for k, v in _JS_RUNTIMES.items()},
+        "yt_dlp_version": yt_dlp.version.__version__,
+        "yt_dlp_ejs_installed": ejs_installed,
+        "path_env": os.environ.get("PATH", "")[:500],
+    })
 
 
 @router.get("/formats")
