@@ -79,12 +79,13 @@ async def debug_info():
 
 
 @router.get("/debug/test")
-async def debug_test():
-    """Test fetching formats for a known video and return raw results."""
-    import yt_dlp
-    from app.utils.file_handler import get_cookie_file
+async def debug_test(url: str = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"):
+    """Test fetching formats for any video and return raw yt-dlp results.
 
-    test_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    Pass ?url=<youtube_url> to test a specific video.
+    Defaults to Rick Astley (dQw4w9WgXcQ) as a known-good baseline.
+    """
+    import yt_dlp
     warnings = []
 
     class WarningLogger:
@@ -106,7 +107,7 @@ async def debug_test():
     def _fetch():
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(test_url, download=False)
+                info = ydl.extract_info(url, download=False)
             formats = info.get("formats", [])
             video_fmts = [
                 f for f in formats
@@ -114,7 +115,12 @@ async def debug_test():
             ]
             return {
                 "success": True,
+                "url_tested": url,
                 "title": info.get("title", "?"),
+                "age_limit": info.get("age_limit"),
+                "availability": info.get("availability"),
+                "is_live": info.get("is_live"),
+                "channel": info.get("channel"),
                 "total_formats": len(formats),
                 "video_formats": len(video_fmts),
                 "video_heights": sorted(set(f["height"] for f in video_fmts), reverse=True),
@@ -129,6 +135,7 @@ async def debug_test():
         except Exception as exc:
             return {
                 "success": False,
+                "url_tested": url,
                 "error": str(exc),
                 "warnings": warnings,
                 "cookie_used": bool(ydl_opts.get("cookiefile")),
