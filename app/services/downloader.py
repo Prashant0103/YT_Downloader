@@ -80,10 +80,15 @@ def _base_opts() -> dict:
         "no_warnings": False,
         "ffmpeg_location": _FFMPEG_PATH,
         "js_runtimes": _JS_RUNTIMES,
-        # Force android_vr client; fall back to mweb (also PO-token-free)
+        # Force android_vr client; fall back to mweb (also PO-token-free).
+        # player_skip=["webpage"] is critical on cloud hosts: yt-dlp normally
+        # downloads the YouTube HTML page first to extract metadata, which
+        # triggers 429 from datacenter IPs. Skipping it makes yt-dlp go
+        # straight to the android_vr player API, bypassing the rate limit.
         "extractor_args": {
             "youtube": {
                 "player_client": ["android_vr", "mweb"],
+                "player_skip": ["webpage"],
             }
         },
         # Polite request pacing to reduce 429 likelihood

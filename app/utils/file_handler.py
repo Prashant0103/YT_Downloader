@@ -31,32 +31,21 @@ def ensure_downloads_dir() -> None:
 def setup_cookies() -> None:
     """Locate and activate a cookies.txt file using three strategies, in order:
 
-    1. File on disk — checks every path in ``_COOKIE_CANDIDATES``
+    1. ``YOUTUBE_COOKIES_B64`` env var — base64-encoded Netscape cookie content.
+       Written to a temp file. Highest priority: browser-exported cookies are
+       more effective than yt-dlp generated cookies on disk.
+    2. ``YOUTUBE_COOKIES`` env var — same but plain text (not base64).
+    3. File on disk — checks every path in ``_COOKIE_CANDIDATES``
        (project root for local dev, /etc/secrets/ for Render Secret Files).
-    2. ``YOUTUBE_COOKIES`` env var — expects the raw Netscape-format cookie
-       content (plain text, NOT base64).  Written to a temp file.
-    3. ``YOUTUBE_COOKIES_B64`` env var — same as above but base64-encoded.
-       Useful when the raw text doesn't survive copy-paste in some dashboards.
+       Lowest priority because disk files are often yt-dlp generated and less
+       effective than real browser session cookies.
 
     Sets the module-level ``_cookie_file`` so that ``get_cookie_file()``
     returns the active path for yt-dlp.
     """
     global _cookie_file, _temp_cookie_file
 
-    # ── Strategy 1: file on disk ────────────────────────────────────────────
-    for candidate in _COOKIE_CANDIDATES:
-        if candidate.exists():
-            _cookie_file = candidate
-            _log_cookie_loaded(candidate)
-            return
-
-    # ── Strategy 2: plain-text env var ──────────────────────────────────────
-    raw = os.environ.get("YOUTUBE_COOKIES", "").strip()
-    if raw:
-        _cookie_file = _write_temp_cookie(raw, source="YOUTUBE_COOKIES env var")
-        return
-
-    # ── Strategy 3: base64-encoded env var ──────────────────────────────────
+    # ── Strategy 1: base64-encoded env var (browser cookies, best) ──────────
     b64 = os.environ.get("YOUTUBE_COOKIES_B64", "").strip()
     if b64:
         try:
@@ -66,9 +55,22 @@ def setup_cookies() -> None:
         except Exception as exc:
             logger.error("Failed to decode YOUTUBE_COOKIES_B64: %s", exc)
 
+    # ── Strategy 2: plain-text env var ──────────────────────────────────────
+    raw = os.environ.get("YOUTUBE_COOKIES", "").strip()
+    if raw:
+        _cookie_file = _write_temp_cookie(raw, source="YOUTUBE_COOKIES env var")
+        return
+
+    # ── Strategy 3: file on disk (lowest priority) ──────────────────────────
+    for candidate in _COOKIE_CANDIDATES:
+        if candidate.exists():
+            _cookie_file = candidate
+            _log_cookie_loaded(candidate)
+            return
+
     logger.warning(
-        "No cookies found (checked disk paths %s and env vars "
-        "YOUTUBE_COOKIES / YOUTUBE_COOKIES_B64). "
+        "No cookies found (checked env vars YOUTUBE_COOKIES_B64 / YOUTUBE_COOKIES "
+        "and disk paths %s). "
         "YouTube will likely rate-limit or block requests.",
         [str(p) for p in _COOKIE_CANDIDATES],
     )
