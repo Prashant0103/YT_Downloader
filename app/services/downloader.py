@@ -90,45 +90,69 @@ class DownloaderService:
             self._jobs[job_id].update(kwargs)
 
     def get_formats(self, url: str) -> dict:
-        _warnings: list[str] = []
+        """Fetch available formats, retrying on transient 429 errors."""
+        import time
 
-        class _Logger:
-            """Capture yt-dlp warnings so we can surface them to the user."""
-            def debug(self, msg): pass
-            def info(self, msg): pass
-            def warning(self, msg): _warnings.append(msg)
-            def error(self, msg): _warnings.append(f"ERROR: {msg}")
+        max_retries = 3
+        last_warnings: list[str] = []
+        last_result = None
 
-        ydl_opts = {
-            "quiet": True,
-            "no_warnings": False,
-            "logger": _Logger(),
-            "ffmpeg_location": _FFMPEG_PATH,
-            "format": "bestvideo*+bestaudio*/bestvideo+bestaudio/best",
-            "ignore_no_formats_error": True,
-            "js_runtimes": _JS_RUNTIMES,
-        }
-        _apply_auth(ydl_opts)
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+        for attempt in range(max_retries):
+            _warnings: list[str] = []
 
-        result = _parse_formats(info)
+            class _Logger:
+                def debug(self, msg): pass
+                def info(self, msg): pass
+                def warning(self, msg): _warnings.append(msg)
+                def error(self, msg): _warnings.append(f"ERROR: {msg}")
 
-        # If we got a title but zero downloadable formats, surface yt-dlp warnings
-        if not result["formats"]:
-            if _warnings:
-                logger.warning("No formats for %s — yt-dlp warnings: %s", url, _warnings)
-            # Raise so the API returns a useful error instead of empty formats
-            hint = ""
-            if any("429" in w for w in _warnings):
-                hint = " YouTube is rate-limiting this server (HTTP 429). Try again in a few minutes."
-            elif any("PO Token" in w or "Sign in" in w for w in _warnings):
-                hint = " YouTube requires authentication for this video from this server."
-            raise yt_dlp.utils.DownloadError(
-                f"No downloadable formats found for this video.{hint}"
-            )
+            ydl_opts = {
+                "quiet": True,
+                "no_warnings": False,
+                "logger": _Logger(),
+                "ffmpeg_location": _FFMPEG_PATH,
+                "format": "bestvideo*+bestaudio*/bestvideo+bestaudio/best",
+                "ignore_no_formats_error": True,
+                "js_runtimes": _JS_RUNTIMES,
+            }
+            _apply_auth(ydl_opts)
 
-        return result
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+
+            result = _parse_formats(info)
+            last_warnings = _warnings
+            last_result = result
+
+            if result["formats"]:
+                return result  # Success!
+
+            # Check if it's a 429 — worth retrying
+            is_429 = any("429" in w for w in _warnings)
+            if is_429 and attempt < max_retries - 1:
+                wait = [5, 15][attempt]
+                logger.info(
+                    "429 rate-limit on attempt %d/%d for %s — retrying in %ds",
+                    attempt + 1, max_retries, url, wait,
+                )
+                time.sleep(wait)
+                continue
+
+            # Not a 429 or last attempt — break out
+            break
+
+        # All retries exhausted or non-retryable error
+        if last_warnings:
+            logger.warning("No formats for %s — yt-dlp warnings: %s", url, last_warnings)
+
+        hint = ""
+        if any("429" in w for w in last_warnings):
+            hint = " YouTube is rate-limiting this server (HTTP 429). Try again later."
+        elif any("PO Token" in w or "Sign in" in w for w in last_warnings):
+            hint = " YouTube requires authentication for this video from this server."
+        raise yt_dlp.utils.DownloadError(
+            f"No downloadable formats found for this video.{hint}"
+        )
 
     def download(self, job_id: str, url: str, format_id: str = "best") -> None:
         with self._lock:
