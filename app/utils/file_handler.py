@@ -10,6 +10,9 @@ BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent
 DOWNLOADS_DIR: Path = BASE_DIR / "downloads"
 _COOKIES_FILE: Path = BASE_DIR / "cookies.txt"
 
+# Fixed path for env-var cookies so restarts always overwrite it
+_ENV_COOKIE_FILE: Path = Path(tempfile.gettempdir()) / "yt_downloader_cookies.txt"
+
 _cookie_file: Path | None = None
 _oauth2_active: bool = False
 
@@ -64,19 +67,21 @@ def setup_cookies() -> None:
     # Priority 1: cookies.txt written by refresh_cookies.py
     if _COOKIES_FILE.exists():
         _cookie_file = _COOKIES_FILE
-        logger.info("YouTube cookies loaded from %s", _COOKIES_FILE)
+        logger.info("YouTube cookies loaded from %s (%d bytes)",
+                     _COOKIES_FILE, _COOKIES_FILE.stat().st_size)
         return
 
     # Priority 2: YOUTUBE_COOKIES environment variable (Render / CI)
+    # Always re-write the file on startup to pick up env var changes.
     content = os.environ.get("YOUTUBE_COOKIES", "").strip()
     if content:
-        tmp = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".txt", delete=False, encoding="utf-8"
+        _ENV_COOKIE_FILE.write_text(content, encoding="utf-8")
+        _cookie_file = _ENV_COOKIE_FILE
+        logger.info(
+            "YouTube cookies written from YOUTUBE_COOKIES env var "
+            "(%d chars -> %s, %d bytes on disk)",
+            len(content), _ENV_COOKIE_FILE, _ENV_COOKIE_FILE.stat().st_size,
         )
-        tmp.write(content)
-        tmp.close()
-        _cookie_file = Path(tmp.name)
-        logger.info("YouTube cookies loaded from YOUTUBE_COOKIES env var")
         return
 
     logger.info("No YouTube cookies configured")

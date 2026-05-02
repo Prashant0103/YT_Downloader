@@ -64,6 +64,7 @@ async def debug_info():
     yt_cookies_env = os.environ.get("YOUTUBE_COOKIES", "")
     cookie_info["env_var_set"] = bool(yt_cookies_env.strip())
     cookie_info["env_var_length"] = len(yt_cookies_env)
+    cookie_info["env_var_preview"] = yt_cookies_env[:120] if yt_cookies_env else ""
 
     from app.services.downloader import _IMPERSONATE_TARGET
     return JSONResponse(content={
