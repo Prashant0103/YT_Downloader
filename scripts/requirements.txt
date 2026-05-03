@@ -1,2 +1,0 @@
-# yt-dlp is already in the main requirements.txt — no extra packages needed.
-# The cookie script uses yt-dlp's built-in browser extractor.
