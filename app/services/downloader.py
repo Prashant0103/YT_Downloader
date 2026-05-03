@@ -96,8 +96,10 @@ def _base_opts() -> dict:
         "retries": 6,
         "fragment_retries": 6,
         "retry_sleep_functions": {"http": lambda n: 2 ** n},  # 2 4 8 16 32 64 s
+    }
     _apply_auth(opts)
     return opts
+
 
 
 class DownloaderService:
