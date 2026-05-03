@@ -39,9 +39,10 @@ def _build_js_runtimes() -> dict:
     return runtimes
 
 
-
+_JS_RUNTIMES: dict = _build_js_runtimes()
 
 _RESOLUTIONS = [2160, 1440, 1080, 720, 480, 360]
+
 
 FORMAT_MAP: dict[str, str] = {
     "2160": "bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=2160]+bestaudio/best[height<=2160][acodec!=none]",
