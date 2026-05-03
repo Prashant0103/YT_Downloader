@@ -13,7 +13,7 @@ from starlette.background import BackgroundTask
 
 logger = logging.getLogger(__name__)
 
-from app.services.downloader import DownloaderService, _JS_RUNTIMES, _PROXY_URL
+from app.services.downloader import DownloaderService, _JS_RUNTIMES
 from app.utils.file_handler import DOWNLOADS_DIR
 from app.utils.validator import validate_youtube_url
 
@@ -72,9 +72,7 @@ async def debug_info():
         "js_runtimes_config": {k: str(v) for k, v in _JS_RUNTIMES.items()},
         "yt_dlp_version": yt_dlp.version.__version__,
         "yt_dlp_ejs_installed": ejs_installed,
-        "player_client": "android_vr, tv_embedded, ios (configured via extractor_args)",
-        "proxy_url": _PROXY_URL if _PROXY_URL else None,
-        "proxy_active": bool(_PROXY_URL),
+        "player_client": "android_vr, tv_embedded, ios",
         "cookie_info": cookie_info,
         "path_env": os.environ.get("PATH", "")[:500],
     })
