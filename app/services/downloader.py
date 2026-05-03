@@ -56,10 +56,34 @@ def _build_js_runtimes() -> dict:
 
 _JS_RUNTIMES: dict = _build_js_runtimes()
 
+def _check_proxy(url: str) -> bool:
+    """Return True if the proxy is reachable, False otherwise."""
+    import urllib.request
+    try:
+        proxy_handler = urllib.request.ProxyHandler({"http": url, "https": url})
+        opener = urllib.request.build_opener(proxy_handler)
+        opener.addheaders = [("User-Agent", "curl/7.88")]
+        # Just connect to YouTube's homepage through the proxy with a short timeout
+        opener.open("http://www.youtube.com", timeout=8)
+        return True
+    except Exception as exc:
+        logger.error("Proxy health-check FAILED (%s): %s", url, exc)
+        return False
+
+
 if _PROXY_URL:
-    logger.info("Proxy ENABLED: %s", _PROXY_URL)
+    logger.info("Proxy configured: %s — running health check...", _PROXY_URL)
+    if _check_proxy(_PROXY_URL):
+        logger.info("Proxy OK — all yt-dlp traffic will route through proxy")
+    else:
+        logger.warning(
+            "Proxy UNREACHABLE — falling back to direct connection. "
+            "Fix PROXY_URL and redeploy to enable the proxy."
+        )
+        _PROXY_URL = ""   # disable so _base_opts() doesn't inject a broken proxy
 else:
-    logger.info("Proxy NOT configured — direct connection (set PROXY_URL to enable)")
+    logger.info("No PROXY_URL set — using direct connection")
+
 
 _RESOLUTIONS = [2160, 1440, 1080, 720, 480, 360]
 
