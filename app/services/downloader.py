@@ -69,14 +69,23 @@ _BITRATES_MBPS: dict[str, float] = {
 }
 
 
+# Format selector strategy (each entry has four fallback tiers):
+#   Tier 1: DASH video-only (mp4) + DASH audio-only (m4a)  → best quality, needs ffmpeg merge
+#   Tier 2: DASH video-only (any) + DASH audio-only (any)  → broader codec support
+#   Tier 3: best combined stream with audio (progressive)   → ios/legacy clients
+#   Tier 4: best combined stream (no codec filter)          → absolute last resort
+#
+# Tier 3/4 are critical when ios is the download client: ios only provides
+# progressive mp4 streams (video+audio in one file, e.g. format IDs 18/22).
+# Without these tiers the selector would fail with "format not available".
 FORMAT_MAP: dict[str, str] = {
-    "2160": "bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=2160]+bestaudio/best[height<=2160][acodec!=none]",
-    "1440": "bestvideo[height<=1440][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1440]+bestaudio/best[height<=1440][acodec!=none]",
-    "1080": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080][acodec!=none]",
-    "720":  "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720][acodec!=none]",
-    "480":  "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best[height<=480][acodec!=none]",
-    "360":  "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=360]+bestaudio/best[height<=360][acodec!=none]",
-    "best": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[acodec!=none]",
+    "2160": "bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=2160]+bestaudio/best[height<=2160][acodec!=none]/best[height<=2160]",
+    "1440": "bestvideo[height<=1440][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1440]+bestaudio/best[height<=1440][acodec!=none]/best[height<=1440]",
+    "1080": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080][acodec!=none]/best[height<=1080]",
+    "720":  "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720][acodec!=none]/best[height<=720]",
+    "480":  "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best[height<=480][acodec!=none]/best[height<=480]",
+    "360":  "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=360]+bestaudio/best[height<=360][acodec!=none]/best[height<=360]",
+    "best": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[acodec!=none]/best",
 }
 
 
@@ -310,12 +319,14 @@ class DownloaderService:
             "merge_output_format":  "mp4",
             "restrictfilenames":    True,
             "progress_hooks":       [self._make_progress_hook(job_id)],
-            # Verify the selected URL is actually fetchable before committing
-            # to the download — surfaces 403s early with a clear error message
-            # instead of failing mid-stream.
-            "check_formats":        "selected",
-            # Download multiple fragments in parallel for faster speeds.
-            "concurrent_fragment_downloads": 4,
+            # NOTE: check_formats is intentionally NOT set.
+            # Setting it to 'selected' validates the format selector against
+            # the ios client's format list BEFORE trying fallback tiers.
+            # ios only serves progressive streams (no separate DASH audio),
+            # so the bestvideo+bestaudio merge check always fails even though
+            # the /best[height<=N] fallback tier would succeed.
+            # Fragment parallelism for DASH multi-part streams.
+            "concurrent_fragment_downloads": 2,
         })
 
         try:
