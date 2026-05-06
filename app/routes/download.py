@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Form, Request
@@ -19,8 +18,9 @@ router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
 
 _service = DownloaderService()
-# Run blocking yt-dlp format-fetching in a thread so the event loop isn't stalled
-_executor = ThreadPoolExecutor(max_workers=4)
+# No manual ThreadPoolExecutor needed — asyncio.to_thread() uses the running
+# event loop's default executor (a ThreadPoolExecutor) and is the modern,
+# idiomatic approach since Python 3.9.
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -30,17 +30,32 @@ async def index(request: Request):
 
 @router.get("/formats")
 async def get_formats(url: str):
+    """Fetch video title, duration and quality options.
+
+    yt-dlp info-extraction is blocking (sync HTTP + JS evaluation).
+    asyncio.to_thread() offloads it to the thread pool without stalling
+    the event loop or needing a manually managed ThreadPoolExecutor.
+    """
     error = validate_youtube_url(url)
     if error:
         return JSONResponse(status_code=400, content={"error": error})
 
-    loop = asyncio.get_event_loop()
     try:
-        result = await loop.run_in_executor(_executor, _service.get_formats, url)
+        result = await asyncio.to_thread(_service.get_formats, url)
         return JSONResponse(content=result)
     except Exception as exc:
-        logger_msg = str(exc).removeprefix("ERROR: ").strip()
-        return JSONResponse(status_code=500, content={"error": logger_msg})
+        msg = str(exc).removeprefix("ERROR: ").strip()
+        return JSONResponse(status_code=500, content={"error": msg})
+
+
+async def _run_download(job_id: str, url: str, format_id: str) -> None:
+    """Async wrapper so BackgroundTasks awaits the coroutine properly.
+
+    yt-dlp download is inherently blocking (file I/O + network).
+    asyncio.to_thread() moves it off the event loop into a worker thread,
+    while the coroutine itself is tracked by FastAPI's BackgroundTasks.
+    """
+    await asyncio.to_thread(_service.download, job_id, url, format_id)
 
 
 @router.post("/download")
@@ -49,17 +64,25 @@ async def download_video(
     url: str = Form(...),
     format_id: str = Form(default="best"),
 ):
+    """Queue a download job and return the job ID immediately.
+
+    The actual download runs as an async background task via _run_download,
+    which offloads the blocking yt-dlp call to the thread pool.
+    """
     error = validate_youtube_url(url)
     if error:
         return JSONResponse(status_code=400, content={"error": error})
 
     job_id = str(uuid.uuid4())
-    background_tasks.add_task(_service.download, job_id, url, format_id)
+    # FastAPI awaits async background tasks — _run_download is a coroutine,
+    # so the scheduler tracks it properly throughout its lifetime.
+    background_tasks.add_task(_run_download, job_id, url, format_id)
     return JSONResponse(content={"job_id": job_id, "status": "pending"})
 
 
 @router.get("/file/{job_id}")
 async def serve_file(job_id: str):
+    """Stream the completed file to the browser and delete it afterwards."""
     job = _service.get_job(job_id)
     if not job or job.get("status") != "completed":
         return JSONResponse(status_code=404, content={"error": "File not ready"})
@@ -68,9 +91,10 @@ async def serve_file(job_id: str):
     if not filepath.exists():
         return JSONResponse(status_code=404, content={"error": "File not found on disk"})
 
-    def _delete_after_send():
+    async def _delete_after_send() -> None:
+        """Async cleanup: delete the temp file after it has been streamed."""
         try:
-            filepath.unlink(missing_ok=True)
+            await asyncio.to_thread(filepath.unlink, True)  # missing_ok=True
             logger.info("Deleted after browser download: %s", filepath.name)
         except Exception as exc:
             logger.warning("Could not delete %s: %s", filepath.name, exc)
@@ -86,6 +110,7 @@ async def serve_file(job_id: str):
 
 @router.get("/status/{job_id}")
 async def job_status(job_id: str):
+    """Return live job status including download progress fields."""
     job = _service.get_job(job_id)
     if job is None:
         return JSONResponse(status_code=404, content={"error": "Job not found"})

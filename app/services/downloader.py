@@ -49,13 +49,24 @@ _RESOLUTIONS = [2160, 1440, 1080, 720, 480, 360]
 # during listing) still offer all qualities. The actual download uses
 # format selectors + android clients that bypass the restriction.
 _QUALITY_OPTIONS = [
-    {"label": "4K",   "format_key": "2160"},
+    {"label": "4K",    "format_key": "2160"},
     {"label": "1440p", "format_key": "1440"},
     {"label": "1080p", "format_key": "1080"},
     {"label": "720p",  "format_key": "720"},
     {"label": "480p",  "format_key": "480"},
     {"label": "360p",  "format_key": "360"},
 ]
+
+# Approximate combined video+audio bitrates (Mbps) used to estimate file size.
+# size_MB ≈ bitrate_Mbps × duration_seconds / 8
+_BITRATES_MBPS: dict[str, float] = {
+    "2160": 15.0,   # 4K
+    "1440":  8.0,   # 1440p
+    "1080":  4.0,   # 1080p
+    "720":   2.5,   # 720p
+    "480":   1.2,   # 480p
+    "360":   0.6,   # 360p
+}
 
 
 FORMAT_MAP: dict[str, str] = {
@@ -198,25 +209,80 @@ class DownloaderService:
             url, info.get("title", ""), raw_heights, _warnings or None,
         )
 
-        # Always return the full hardcoded quality menu — size_mb is omitted
-        # because we can't reliably estimate it from a restricted listing.
+        # Always return the full hardcoded quality menu with estimated sizes.
+        # Size is estimated as: bitrate_Mbps × duration_seconds / 8.
+        duration = info.get("duration") or 0
         return {
             "title":    info.get("title", "Unknown"),
-            "duration": info.get("duration"),
+            "duration": duration,
             "formats":  [
-                {"label": q["label"], "format_key": q["format_key"], "size_mb": None}
+                {
+                    "label":      q["label"],
+                    "format_key": q["format_key"],
+                    "size_mb":    (
+                        round(_BITRATES_MBPS[q["format_key"]] * duration / 8, 1)
+                        if duration else None
+                    ),
+                }
                 for q in _QUALITY_OPTIONS
             ],
         }
 
+    def _make_progress_hook(self, job_id: str):
+        """Return a yt-dlp progress hook that writes live stats to the job dict.
+
+        DASH downloads have two streams: video then audio.  We map them to
+        0-50% (video) and 50-100% (audio) so the bar moves smoothly end-to-end.
+        A single-stream (progressive) download uses the full 0-100% range.
+        """
+        state = {"phase": 0}  # incremented each time a stream finishes
+
+        def hook(d: dict) -> None:
+            status = d.get("status")
+            if status == "downloading":
+                dl    = d.get("downloaded_bytes") or 0
+                total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+                speed = int(d.get("speed") or 0)
+                eta   = int(d.get("eta")   or 0)
+                pct   = dl / total * 100 if total else 0
+
+                if state["phase"] == 0:
+                    # First stream: fill the first 50% (will snap to 50 on finish)
+                    display = pct * 0.5
+                else:
+                    # Second stream (audio): fill 50-100%
+                    display = 50 + pct * 0.5
+
+                self._set(job_id,
+                    progress=round(display, 1),
+                    downloaded_bytes=dl,
+                    total_bytes=total,
+                    speed_bytes=speed,
+                    eta_seconds=eta,
+                )
+
+            elif status == "finished":
+                state["phase"] += 1
+                if state["phase"] == 1:
+                    # First stream done — snap to 50% while audio begins
+                    self._set(job_id, progress=50.0, speed_bytes=0, eta_seconds=0)
+
+        return hook
+
     def download(self, job_id: str, url: str, format_id: str = "best") -> None:
         with self._lock:
             self._jobs[job_id] = {
-                "status": JobStatus.PENDING,
-                "url": url,
-                "filename": None,
-                "filepath": None,
-                "error": None,
+                "status":           JobStatus.PENDING,
+                "url":              url,
+                "filename":         None,
+                "filepath":         None,
+                "error":            None,
+                # Progress fields (updated live via progress hook)
+                "progress":         0.0,
+                "downloaded_bytes": 0,
+                "total_bytes":      0,
+                "speed_bytes":      0,
+                "eta_seconds":      0,
             }
 
         self._set(job_id, status=JobStatus.DOWNLOADING)
@@ -225,10 +291,11 @@ class DownloaderService:
         fmt = FORMAT_MAP.get(format_id, FORMAT_MAP["best"])
         opts = _base_opts()
         opts.update({
-            "outtmpl": str(DOWNLOADS_DIR / "%(title)s.%(ext)s"),
-            "format": fmt,
-            "merge_output_format": "mp4",
-            "restrictfilenames": True,
+            "outtmpl":              str(DOWNLOADS_DIR / "%(title)s.%(ext)s"),
+            "format":               fmt,
+            "merge_output_format":  "mp4",
+            "restrictfilenames":    True,
+            "progress_hooks":       [self._make_progress_hook(job_id)],
         })
 
         try:

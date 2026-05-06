@@ -372,6 +372,63 @@
     }
     .sresult-thumb-wrap { position:relative; flex-shrink:0; }
 
+    /* ── Progress bar ─────────────────────────────────────── */
+    .prog-wrap {
+      margin-top:1.1rem;
+      padding:1rem 1.15rem;
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:14px;
+      animation:fadeUp .25s ease both;
+    }
+    .prog-header {
+      display:flex; justify-content:space-between; align-items:center;
+      margin-bottom:.6rem;
+    }
+    .prog-label {
+      font-size:.8rem; font-weight:600; color:rgba(255,255,255,.6);
+      display:flex; align-items:center; gap:.45rem;
+    }
+    .prog-pct {
+      font-size:.85rem; font-weight:800;
+      background:linear-gradient(135deg,#ff8080,#ff3030);
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+    }
+    .prog-track {
+      height:7px;
+      background:rgba(255,255,255,.07);
+      border-radius:99px;
+      overflow:hidden;
+      margin-bottom:.65rem;
+      position:relative;
+    }
+    .prog-bar {
+      height:100%;
+      background:linear-gradient(90deg,#cc0000,#ff4500,#ff9900);
+      border-radius:99px;
+      width:0%;
+      transition:width .5s cubic-bezier(.4,0,.2,1);
+      position:relative;
+      overflow:hidden;
+    }
+    .prog-bar::after {
+      content:'';
+      position:absolute; inset:0;
+      background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,.35) 50%,transparent 100%);
+      animation:shimmer 1.6s ease-in-out infinite;
+    }
+    @keyframes shimmer {
+      0%   { transform:translateX(-100%); }
+      100% { transform:translateX(250%); }
+    }
+    .prog-meta {
+      display:flex; justify-content:space-between;
+      font-size:.72rem; color:rgba(255,255,255,.33);
+    }
+    .prog-meta span { display:flex; flex-direction:column; align-items:center; gap:.1rem; }
+    .prog-meta .pm-val { font-size:.78rem; font-weight:600; color:rgba(255,255,255,.55); }
+    .prog-meta .pm-key { font-size:.63rem; text-transform:uppercase; letter-spacing:.08em; }
+
     @media(max-width:500px){
       .card { padding:1.75rem 1.25rem; }
       .fgrid { grid-template-columns:repeat(3,1fr); }
@@ -464,6 +521,27 @@
   </div>
 
   <div class="sbox hidden" id="sbox"></div>
+
+  <!-- Progress bar (shown while downloading) -->
+  <div id="progSec" class="hidden">
+    <div class="prog-wrap">
+      <div class="prog-header">
+        <span class="prog-label">
+          <span class="sp"></span>
+          <span id="progPhase">Downloading…</span>
+        </span>
+        <span class="prog-pct" id="progPct">0%</span>
+      </div>
+      <div class="prog-track">
+        <div class="prog-bar" id="progBar"></div>
+      </div>
+      <div class="prog-meta">
+        <span><span class="pm-val" id="progDl">—</span><span class="pm-key">Downloaded</span></span>
+        <span><span class="pm-val" id="progSpd">—</span><span class="pm-key">Speed</span></span>
+        <span><span class="pm-val" id="progEta">—</span><span class="pm-key">ETA</span></span>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -480,8 +558,37 @@
   const searchQ     = document.getElementById('searchQ');
   const searchBtn   = document.getElementById('searchBtn');
   const searchRes   = document.getElementById('searchResults');
+  const progSec     = document.getElementById('progSec');
+  const progBar     = document.getElementById('progBar');
+  const progPct     = document.getElementById('progPct');
+  const progPhase   = document.getElementById('progPhase');
+  const progDl      = document.getElementById('progDl');
+  const progSpd     = document.getElementById('progSpd');
+  const progEta     = document.getElementById('progEta');
 
   let selFmt = null, pollTimer = null;
+
+  /* ── Byte / time formatters ── */
+  function fmtBytes(b) {
+    if (!b || b <= 0) return '—';
+    if (b < 1024)        return b + ' B';
+    if (b < 1048576)     return (b / 1024).toFixed(1) + ' KB';
+    if (b < 1073741824)  return (b / 1048576).toFixed(1) + ' MB';
+    return (b / 1073741824).toFixed(2) + ' GB';
+  }
+  function fmtEta(s) {
+    if (!s || s <= 0) return '—';
+    if (s < 60) return s + 's';
+    const m = Math.floor(s / 60), sc = s % 60;
+    return m + ':' + String(sc).padStart(2, '0');
+  }
+  function resetProgress() {
+    progBar.style.width = '0%';
+    progPct.textContent = '0%';
+    progDl.textContent = progSpd.textContent = progEta.textContent = '—';
+    progPhase.textContent = 'Downloading…';
+    progSec.classList.add('hidden');
+  }
 
   /* ── Search ── */
   searchBtn.addEventListener('click', doSearch);
@@ -661,6 +768,7 @@
     dlBtn.disabled = true;
     dlTxt.textContent = 'Starting…';
     st('<span class="sp"></span>Queuing download…', 'info');
+    resetProgress();
 
     try {
       const body = new FormData();
@@ -684,19 +792,43 @@
     try {
       const res  = await fetch('/status/' + jobId);
       const data = await res.json();
-      if (data.status === 'completed') {
+
+      if (data.status === 'downloading') {
+        const pct = data.progress || 0;
+        progBar.style.width = pct + '%';
+        progPct.textContent  = pct.toFixed(1) + '%';
+        progDl.textContent   = fmtBytes(data.downloaded_bytes);
+        progSpd.textContent  = data.speed_bytes ? fmtBytes(data.speed_bytes) + '/s' : '—';
+        progEta.textContent  = fmtEta(data.eta_seconds);
+        // Switch label when video stream done (past 50%)
+        progPhase.textContent = pct >= 50 ? 'Downloading audio…' : 'Downloading video…';
+        progSec.classList.remove('hidden');
+        clrSt();
+        pollTimer = setTimeout(() => poll(jobId), 800);
+
+      } else if (data.status === 'completed') {
+        progBar.style.width = '100%';
+        progPct.textContent = '100%';
+        progPhase.textContent = 'Done!';
+        progSpd.textContent = '—';
+        progEta.textContent = '—';
+        setTimeout(() => progSec.classList.add('hidden'), 1500);
         const a = Object.assign(document.createElement('a'), { href:'/file/'+jobId, download: data.filename||'video.mp4' });
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
         st('✓ Downloading: <strong>' + esc(data.filename) + '</strong>', 'success');
         dlBtn.disabled = false; dlTxt.textContent = 'Download Again';
+
       } else if (data.status === 'failed') {
+        resetProgress();
         st('⚠ ' + esc(data.error || 'Download failed.'), 'error');
         dlBtn.disabled = false; dlTxt.textContent = 'Try Again';
+
       } else {
-        st('<span class="sp"></span>Downloading — please wait…', 'info');
+        // pending — not started yet
         pollTimer = setTimeout(() => poll(jobId), 2000);
       }
     } catch {
+      resetProgress();
       st('Lost connection while checking status.', 'error');
       dlBtn.disabled = false; dlTxt.textContent = 'Try Again';
     }
