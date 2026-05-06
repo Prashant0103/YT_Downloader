@@ -8,6 +8,7 @@ from typing import Optional
 import imageio_ffmpeg
 import yt_dlp
 
+from app.services import invidious as _invidious
 from app.utils.file_handler import DOWNLOADS_DIR, get_cookie_file
 
 # Bundled static binary — works on Render and any env without system ffmpeg
@@ -340,8 +341,51 @@ class DownloaderService:
 
         except yt_dlp.utils.DownloadError as exc:
             msg = str(exc).removeprefix("ERROR: ").strip()
-            self._set(job_id, status=JobStatus.FAILED, error=msg)
-            logger.error("Download failed   job=%s error=%s", job_id, msg)
+
+            is_403 = "403" in msg or "Forbidden" in msg or "unable to download video data" in msg
+            if is_403:
+                # ─────────────────────────────────────────────────────────────
+                # Invidious fallback: Render/datacenter IPs are blocked by
+                # YouTube's CDN at the infrastructure level. Invidious
+                # instances proxy the stream through their own (non-blocked)
+                # servers so the download can succeed.
+                # ─────────────────────────────────────────────────────────────
+                logger.warning(
+                    "Direct download 403 job=%s — trying Invidious fallback", job_id
+                )
+                self._set(job_id, progress=0.0, speed_bytes=0, eta_seconds=0)
+
+                try:
+                    max_h = int(format_id) if format_id.isdigit() else 720
+
+                    def _prog(pct, dl, total, speed, eta):
+                        self._set(
+                            job_id,
+                            progress=pct,
+                            downloaded_bytes=dl,
+                            total_bytes=total,
+                            speed_bytes=speed,
+                            eta_seconds=eta,
+                        )
+
+                    filepath = _invidious.download_stream(
+                        url, max_h, DOWNLOADS_DIR, progress_cb=_prog
+                    )
+                    filename = Path(filepath).name
+                    self._set(
+                        job_id,
+                        status=JobStatus.COMPLETED,
+                        filename=filename,
+                        filepath=filepath,
+                    )
+                    logger.info("Invidious download complete job=%s file=%s", job_id, filename)
+
+                except Exception as inv_exc:
+                    self._set(job_id, status=JobStatus.FAILED, error=str(inv_exc))
+                    logger.error("Invidious fallback failed job=%s error=%s", job_id, inv_exc)
+            else:
+                self._set(job_id, status=JobStatus.FAILED, error=msg)
+                logger.error("Download failed   job=%s error=%s", job_id, msg)
 
         except Exception as exc:
             self._set(job_id, status=JobStatus.FAILED, error=str(exc))
