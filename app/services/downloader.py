@@ -69,15 +69,18 @@ class JobStatus(str, Enum):
 def _base_opts() -> dict:
     """Options common to both format-listing and downloading.
 
-    Client strategy (all three bypass YouTube PO-token requirements):
-      android_vr  - primary; no PO token, no JS challenge, datacenter-friendly
-      tv_embedded - YouTube TV embedded player; works for bot-challenged videos
-      ios         - YouTube iOS app; broad fallback
+    Client strategy:
+      web         - PRIMARY when cookies are present; uses cookie auth so YouTube
+                    treats the request as a logged-in browser session. This is the
+                    most effective client on datacenter IPs with fresh cookies.
+      tv_embedded - YouTube TV embedded player; no PO token needed, good fallback.
+      mweb        - Mobile web; another browser-like fallback.
+      ios         - YouTube iOS app; broad last-resort fallback.
 
     NOTE: player_skip intentionally NOT set.  Skipping the webpage removes the
     visitor-session context that some videos need, causing YouTube to trigger
     'confirm you are not a bot' even with valid cookies.  With real cookies
-    the webpage loads as an authenticated session (no 429 either).
+    the webpage loads as an authenticated session.
     """
     opts = {
         "quiet": True,
@@ -86,8 +89,18 @@ def _base_opts() -> dict:
         "js_runtimes": _JS_RUNTIMES,
         "extractor_args": {
             "youtube": {
-                "player_client": ["android_vr", "tv_embedded", "ios"],
+                # web MUST be first so cookies are used for authentication.
+                # android_vr / ios are app clients that ignore cookies entirely.
+                "player_client": ["web", "tv_embedded", "mweb", "ios"],
             }
+        },
+        # Mimic a real browser so YouTube doesn't flag the request
+        "http_headers": {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
         },
         # Polite request pacing to reduce 429 likelihood
         "sleep_interval_requests": 1,
