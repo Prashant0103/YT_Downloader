@@ -281,10 +281,102 @@
 
     .hidden { display:none !important; }
 
+    /* ── Search bar ──────────────────────────────────────── */
+    .search-row { display:flex; gap:.6rem; margin-bottom:1.4rem; }
+    .search-iw { flex:1; position:relative; }
+    .search-iw svg {
+      position:absolute; left:1rem; top:50%; transform:translateY(-50%);
+      width:15px; height:15px; color:rgba(255,255,255,.22);
+      pointer-events:none; transition:color .2s;
+    }
+    .search-iw:focus-within svg { color:rgba(255,100,100,.7); }
+    .search-input {
+      width:100%;
+      padding:.85rem 1rem .85rem 2.6rem;
+      background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.1);
+      border-radius:14px; color:#fff; font-size:.9rem; outline:none;
+      transition:border-color .25s, background .25s, box-shadow .25s;
+    }
+    .search-input::placeholder { color:rgba(255,255,255,.2); }
+    .search-input:focus {
+      background:rgba(255,255,255,.08);
+      border-color:rgba(255,60,60,.6);
+      box-shadow:0 0 0 3px rgba(255,0,0,.1);
+    }
+    .btn-search {
+      padding:.85rem 1.25rem; font-size:.9rem; border-radius:14px;
+      background:linear-gradient(135deg,rgba(255,255,255,.12),rgba(255,255,255,.04));
+      color:#fff; border:1px solid rgba(255,255,255,.15);
+      box-shadow:0 4px 14px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.1);
+    }
+    .btn-search:not(:disabled):hover {
+      transform:translateY(-2px) scale(1.03);
+      background:linear-gradient(135deg,rgba(255,255,255,.18),rgba(255,255,255,.07));
+      box-shadow:0 8px 22px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.15);
+    }
+
+    /* ── Search results ──────────────────────────────────── */
+    #searchResults {
+      display:none;
+      flex-direction:column;
+      gap:.55rem;
+      margin-bottom:1.4rem;
+      max-height:360px;
+      overflow-y:auto;
+      padding-right:4px;
+    }
+    #searchResults::-webkit-scrollbar { width:4px; }
+    #searchResults::-webkit-scrollbar-track { background:transparent; }
+    #searchResults::-webkit-scrollbar-thumb { background:rgba(255,255,255,.15); border-radius:2px; }
+
+    .sresult {
+      display:flex; gap:.85rem; align-items:center;
+      padding:.7rem .85rem;
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:14px;
+      cursor:pointer;
+      transition:background .15s, border-color .15s, transform .15s;
+      animation:fadeUp .3s ease both;
+    }
+    .sresult:hover {
+      background:rgba(255,255,255,.08);
+      border-color:rgba(255,60,60,.35);
+      transform:translateX(3px);
+    }
+    .sresult.active {
+      background:rgba(255,20,20,.12);
+      border-color:rgba(255,60,60,.55);
+    }
+    .sresult-thumb {
+      flex-shrink:0; width:90px; height:54px;
+      border-radius:9px; object-fit:cover;
+      background:#111;
+    }
+    .sresult-info { flex:1; min-width:0; }
+    .sresult-title {
+      font-size:.84rem; font-weight:600; color:#fff;
+      line-height:1.4;
+      overflow:hidden; display:-webkit-box;
+      -webkit-line-clamp:2; -webkit-box-orient:vertical;
+    }
+    .sresult-meta {
+      font-size:.7rem; color:rgba(255,255,255,.35);
+      margin-top:.25rem; display:flex; gap:.6rem;
+    }
+    .sresult-dur {
+      background:rgba(0,0,0,.55); border-radius:4px;
+      padding:1px 5px; font-size:.68rem; color:rgba(255,255,255,.7);
+      position:absolute; bottom:4px; right:4px;
+    }
+    .sresult-thumb-wrap { position:relative; flex-shrink:0; }
+
     @media(max-width:500px){
       .card { padding:1.75rem 1.25rem; }
       .fgrid { grid-template-columns:repeat(3,1fr); }
       .htext h1 { font-size:1.25rem; }
+      .sresult-thumb { width:70px; height:42px; }
     }
   </style>
 </head>
@@ -312,6 +404,27 @@
       <p>Download YouTube videos in your preferred quality</p>
     </div>
   </div>
+
+  <!-- Search bar -->
+  <div class="search-row">
+    <div class="search-iw">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input class="search-input" type="text" id="searchQ"
+        placeholder="Search YouTube videos…" autocomplete="off" spellcheck="false"/>
+    </div>
+    <button class="btn btn-search" id="searchBtn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      Search
+    </button>
+  </div>
+
+  <!-- Search results -->
+  <div id="searchResults"></div>
+
+  <!-- Divider -->
+  <div class="divider"><span class="div-label">or paste URL directly</span></div>
 
   <!-- URL input -->
   <div class="url-row">
@@ -354,18 +467,79 @@
 </div>
 
 <script>
-  const urlEl   = document.getElementById('url');
-  const checkBtn= document.getElementById('checkBtn');
-  const qsec    = document.getElementById('qsec');
-  const vtitle  = document.getElementById('vtitle');
-  const vdur    = document.getElementById('vdur');
-  const fgrid   = document.getElementById('fgrid');
-  const dlBtn   = document.getElementById('dlBtn');
-  const dlTxt   = document.getElementById('dlTxt');
-  const sbox    = document.getElementById('sbox');
-  const card    = document.getElementById('card');
+  const urlEl       = document.getElementById('url');
+  const checkBtn    = document.getElementById('checkBtn');
+  const qsec        = document.getElementById('qsec');
+  const vtitle      = document.getElementById('vtitle');
+  const vdur        = document.getElementById('vdur');
+  const fgrid       = document.getElementById('fgrid');
+  const dlBtn       = document.getElementById('dlBtn');
+  const dlTxt       = document.getElementById('dlTxt');
+  const sbox        = document.getElementById('sbox');
+  const card        = document.getElementById('card');
+  const searchQ     = document.getElementById('searchQ');
+  const searchBtn   = document.getElementById('searchBtn');
+  const searchRes   = document.getElementById('searchResults');
 
   let selFmt = null, pollTimer = null;
+
+  /* ── Search ── */
+  searchBtn.addEventListener('click', doSearch);
+  searchQ.addEventListener('keydown', e => e.key === 'Enter' && doSearch());
+
+  async function doSearch() {
+    const q = searchQ.value.trim();
+    if (!q) return;
+    searchBtn.disabled = true;
+    searchBtn.innerHTML = `<span class="sp"></span>Searching…`;
+    searchRes.style.display = 'none';
+    searchRes.innerHTML = '';
+    try {
+      const res  = await fetch('/search?q=' + encodeURIComponent(q) + '&max_results=8');
+      const data = await res.json();
+      if (!res.ok || !data.results?.length) {
+        st(data.error || 'No results found.', 'error'); return;
+      }
+      renderSearchResults(data.results);
+    } catch {
+      st('Search failed — is the server running?', 'error');
+    } finally {
+      searchBtn.disabled = false;
+      searchBtn.innerHTML =
+        `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Search`;
+    }
+  }
+
+  function renderSearchResults(results) {
+    searchRes.innerHTML = '';
+    results.forEach((v, i) => {
+      const el = document.createElement('div');
+      el.className = 'sresult';
+      el.style.animationDelay = `${i * 45}ms`;
+      el.innerHTML =
+        `<div class="sresult-thumb-wrap">` +
+          `<img class="sresult-thumb" src="${esc(v.thumbnail)}" alt="" loading="lazy" onerror="this.style.background='#222'">` +
+          (v.duration ? `<span class="sresult-dur">${esc(v.duration)}</span>` : '') +
+        `</div>` +
+        `<div class="sresult-info">` +
+          `<div class="sresult-title">${esc(v.title)}</div>` +
+          `<div class="sresult-meta"><span>${esc(v.channel)}</span></div>` +
+        `</div>`;
+      el.addEventListener('click', () => {
+        document.querySelectorAll('.sresult').forEach(r => r.classList.remove('active'));
+        el.classList.add('active');
+        urlEl.value = v.url;
+        // Auto-trigger check
+        qsec.classList.add('hidden');
+        clrSt();
+        check();
+        // Scroll to URL row
+        urlEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+      searchRes.appendChild(el);
+    });
+    searchRes.style.display = 'flex';
+  }
 
   /* ── Helpers ── */
   function st(html, type) {
