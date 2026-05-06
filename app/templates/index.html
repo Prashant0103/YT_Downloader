@@ -813,7 +813,9 @@
         progSpd.textContent = '—';
         progEta.textContent = '—';
         setTimeout(() => progSec.classList.add('hidden'), 1500);
-        const a = Object.assign(document.createElement('a'), { href:'/file/'+jobId, download: data.filename||'video.mp4' });
+        const href = data.direct_url || ('/file/' + jobId);
+        const a = Object.assign(document.createElement('a'), { href, download: data.filename||'video.mp4' });
+        if (data.direct_url) { a.target = '_blank'; a.rel = 'noopener'; }
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
         st('✓ Downloading: <strong>' + esc(data.filename) + '</strong>', 'success');
         dlBtn.disabled = false; dlTxt.textContent = 'Download Again';

@@ -1,9 +1,11 @@
 import logging
+import os
 import shutil
 import threading
 from pathlib import Path
 from enum import Enum
 from typing import Optional
+from urllib.parse import urlparse
 
 import imageio_ffmpeg
 import yt_dlp
@@ -115,6 +117,7 @@ _FORMATS_CLIENT_LIST = ["android_vr", "android", "web", "tv_embedded", "ios"]
 #   is the standard fix recommended by yt-dlp maintainers for server-side
 #   deployments that hit 403 on the actual byte-fetch step.
 _DOWNLOAD_CLIENT_LIST = ["ios", "tv_embedded", "mweb", "android", "web"]
+_BROWSER_DOWNLOAD_CLIENT_LIST = ["ios", "mweb", "web_safari", "web"]
 
 
 class JobStatus(str, Enum):
@@ -167,6 +170,9 @@ def _base_opts(client_list: list[str] | None = None) -> dict:
         "fragment_retries": 6,
         "retry_sleep_functions": {"http": lambda n: 2 ** n},  # 2 4 8 16 32 64 s
     }
+    proxy_url = os.environ.get("YTDLP_PROXY_URL", "").strip()
+    if proxy_url:
+        opts["proxy"] = proxy_url
     _apply_auth(opts)
     return opts
 
@@ -300,6 +306,7 @@ class DownloaderService:
                 "url":              url,
                 "filename":         None,
                 "filepath":         None,
+                "direct_url":       None,
                 "error":            None,
                 # Progress fields (updated live via progress hook)
                 "progress":         0.0,
@@ -381,8 +388,29 @@ class DownloaderService:
                     logger.info("Invidious download complete job=%s file=%s", job_id, filename)
 
                 except Exception as inv_exc:
-                    self._set(job_id, status=JobStatus.FAILED, error=str(inv_exc))
                     logger.error("Invidious fallback failed job=%s error=%s", job_id, inv_exc)
+                    try:
+                        direct = _make_browser_download(url, format_id)
+                        self._set(
+                            job_id,
+                            status=JobStatus.COMPLETED,
+                            filename=direct["filename"],
+                            filepath=None,
+                            direct_url=direct["url"],
+                            progress=100.0,
+                        )
+                        logger.info(
+                            "Browser direct fallback ready job=%s file=%s",
+                            job_id,
+                            direct["filename"],
+                        )
+                    except Exception as direct_exc:
+                        self._set(job_id, status=JobStatus.FAILED, error=str(inv_exc))
+                        logger.error(
+                            "Browser direct fallback failed job=%s error=%s",
+                            job_id,
+                            direct_exc,
+                        )
             else:
                 self._set(job_id, status=JobStatus.FAILED, error=msg)
                 logger.error("Download failed   job=%s error=%s", job_id, msg)
@@ -458,6 +486,76 @@ def _best_audio_size(formats: list) -> int:
         return 0
     best = max(audio, key=lambda f: f.get("abr") or f.get("tbr") or 0)
     return best.get("filesize") or best.get("filesize_approx") or 0
+
+
+def _make_browser_download(url: str, format_id: str) -> dict:
+    """Resolve a media URL that the user's browser can fetch directly.
+
+    This is a final fallback for Render/datacenter IP blocks. The server only
+    extracts the signed URL; the browser performs the byte download from the
+    user's network. Only progressive streams are eligible because browsers
+    cannot merge DASH video-only and audio-only streams.
+    """
+    max_h = int(format_id) if format_id.isdigit() else 720
+    opts = _base_opts(client_list=_BROWSER_DOWNLOAD_CLIENT_LIST)
+    opts.update({
+        "skip_download": True,
+        "format": f"best[height<={max_h}][ext=mp4][acodec!=none]/best[height<={max_h}][acodec!=none]/best[acodec!=none]",
+    })
+
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+
+    requested = info.get("requested_formats") or []
+    candidates = requested or info.get("formats") or [info]
+    progressive = [
+        f for f in candidates
+        if f.get("url")
+        and f.get("vcodec") not in (None, "none")
+        and f.get("acodec") not in (None, "none")
+        and (f.get("height") or 0) <= max_h
+        and _is_browser_media_url(f["url"])
+    ]
+
+    if not progressive and info.get("url") and _is_browser_media_url(info["url"]):
+        progressive = [info]
+    if not progressive:
+        raise RuntimeError("Could not resolve a browser-direct media URL.")
+
+    best = max(progressive, key=_browser_download_rank)
+    title = info.get("title") or info.get("id") or "video"
+    ext = best.get("ext") or "mp4"
+    return {
+        "url": best["url"],
+        "filename": f"{_safe_filename(title)}.{ext}",
+    }
+
+
+def _is_browser_media_url(media_url: str) -> bool:
+    parsed = urlparse(media_url)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _browser_download_rank(fmt: dict) -> tuple:
+    url = fmt.get("url") or ""
+    protocol = fmt.get("protocol") or ""
+    is_progressive_mp4 = (
+        fmt.get("ext") == "mp4"
+        and protocol in {"http", "https"}
+        and "/videoplayback" in url
+        and "manifest.googlevideo.com" not in urlparse(url).netloc.lower()
+    )
+    return (
+        1 if is_progressive_mp4 else 0,
+        fmt.get("height") or 0,
+        fmt.get("tbr") or fmt.get("vbr") or 0,
+    )
+
+
+def _safe_filename(name: str) -> str:
+    cleaned = "".join(c if c.isalnum() or c in " ._-" else "_" for c in name)
+    cleaned = cleaned.strip(" ._")
+    return cleaned or "video"
 
 
 def _apply_auth(opts: dict) -> None:
