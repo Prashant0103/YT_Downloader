@@ -117,7 +117,7 @@ _FORMATS_CLIENT_LIST = ["android_vr", "android", "web", "tv_embedded", "ios"]
 #   is the standard fix recommended by yt-dlp maintainers for server-side
 #   deployments that hit 403 on the actual byte-fetch step.
 _DOWNLOAD_CLIENT_LIST = ["ios", "tv_embedded", "mweb", "android", "web"]
-_BROWSER_DOWNLOAD_CLIENT_LIST = ["ios", "mweb", "web_safari", "web"]
+_BROWSER_DOWNLOAD_CLIENT_LIST = ["web"]
 
 
 class JobStatus(str, Enum):
@@ -162,15 +162,17 @@ def _base_opts(client_list: list[str] | None = None) -> dict:
                 "Chrome/124.0.0.0 Safari/537.36"
             ),
         },
-        # Polite request pacing to reduce 429 likelihood
-        "sleep_interval_requests": 1,
-        "max_sleep_interval": 5,
-        # Retry on transient network / 429 errors
-        "retries": 6,
-        "fragment_retries": 6,
-        "retry_sleep_functions": {"http": lambda n: 2 ** n},  # 2 4 8 16 32 64 s
+        # Small pacing keeps requests polite without adding full seconds per hop.
+        "sleep_interval_requests": 0.25,
+        "max_sleep_interval": 1,
+        # Retry briefly on transient network / 429 errors.
+        "retries": 3,
+        "fragment_retries": 3,
+        "retry_sleep_functions": {"http": lambda n: min(2 ** n, 8)},
+        "buffersize": 1024 * 1024,
+        "http_chunk_size": 10 * 1024 * 1024,
     }
-    proxy_url = os.environ.get("YTDLP_PROXY_URL", "").strip()
+    proxy_url = _proxy_url()
     if proxy_url:
         opts["proxy"] = proxy_url
     _apply_auth(opts)
@@ -319,6 +321,32 @@ class DownloaderService:
         self._set(job_id, status=JobStatus.DOWNLOADING)
         logger.info("Download started  job=%s format=%s url=%s", job_id, format_id, url)
 
+        if _running_on_render() and not _proxy_url():
+            logger.warning(
+                "Render detected without YTDLP_PROXY_URL; using browser-direct "
+                "fallback immediately job=%s",
+                job_id,
+            )
+            try:
+                self._set(job_id, progress=10.0, speed_bytes=0, eta_seconds=0)
+                direct = _make_browser_download(url, format_id)
+                self._set(
+                    job_id,
+                    status=JobStatus.COMPLETED,
+                    filename=direct["filename"],
+                    filepath=None,
+                    direct_url=direct["url"],
+                    progress=100.0,
+                )
+            except Exception as direct_exc:
+                self._set(job_id, status=JobStatus.FAILED, error=str(direct_exc))
+                logger.error(
+                    "Immediate browser-direct fallback failed job=%s error=%s",
+                    job_id,
+                    direct_exc,
+                )
+            return
+
         fmt = FORMAT_MAP.get(format_id, FORMAT_MAP["best"])
         opts = _base_opts(client_list=_DOWNLOAD_CLIENT_LIST)  # ios first → no 403
         opts.update({
@@ -334,7 +362,7 @@ class DownloaderService:
             # so the bestvideo+bestaudio merge check always fails even though
             # the /best[height<=N] fallback tier would succeed.
             # Fragment parallelism for DASH multi-part streams.
-            "concurrent_fragment_downloads": 2,
+            "concurrent_fragment_downloads": 4,
         })
 
         try:
@@ -351,6 +379,32 @@ class DownloaderService:
 
             is_403 = "403" in msg or "Forbidden" in msg or "unable to download video data" in msg
             if is_403:
+                if not _proxy_url():
+                    logger.warning(
+                        "Direct download 403 job=%s and no proxy configured; "
+                        "using browser-direct fallback",
+                        job_id,
+                    )
+                    try:
+                        self._set(job_id, progress=10.0, speed_bytes=0, eta_seconds=0)
+                        direct = _make_browser_download(url, format_id)
+                        self._set(
+                            job_id,
+                            status=JobStatus.COMPLETED,
+                            filename=direct["filename"],
+                            filepath=None,
+                            direct_url=direct["url"],
+                            progress=100.0,
+                        )
+                    except Exception as direct_exc:
+                        self._set(job_id, status=JobStatus.FAILED, error=str(direct_exc))
+                        logger.error(
+                            "Browser direct fallback failed job=%s error=%s",
+                            job_id,
+                            direct_exc,
+                        )
+                    return
+
                 # ─────────────────────────────────────────────────────────────
                 # Invidious fallback: Render/datacenter IPs are blocked by
                 # YouTube's CDN at the infrastructure level. Invidious
@@ -564,6 +618,14 @@ def _apply_auth(opts: dict) -> None:
     cf = get_cookie_file()
     if cf and cf.exists():
         opts["cookiefile"] = str(cf)
+
+
+def _proxy_url() -> str:
+    return os.environ.get("YTDLP_PROXY_URL", "").strip()
+
+
+def _running_on_render() -> bool:
+    return os.environ.get("RENDER", "").lower() == "true"
 
 
 def _resolve_filepath(ydl: yt_dlp.YoutubeDL, info: dict) -> str:

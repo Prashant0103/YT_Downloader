@@ -808,7 +808,7 @@
 
       } else if (data.status === 'completed') {
         if (data.direct_url) {
-          await downloadInBrowser('/direct/' + jobId, data.filename || 'video.mp4', data.direct_url);
+          openFallbackVideo(data.direct_url, data.filename || 'video.mp4');
           dlBtn.disabled = false; dlTxt.textContent = 'Download Again';
           return;
         }
@@ -841,63 +841,15 @@
     }
   }
 
-  async function downloadInBrowser(url, filename, fallbackUrl) {
-    progBar.style.width = '0%';
-    progPct.textContent = '0%';
-    progDl.textContent = progSpd.textContent = progEta.textContent = 'â€”';
-    progPhase.textContent = 'Downloading in browserâ€¦';
-    progSec.classList.remove('hidden');
-    clrSt();
-
-    try {
-      const res = await fetch(url);
-      if (!res.ok || !res.body) throw new Error('Browser download failed.');
-
-      const total = Number(res.headers.get('content-length')) || 0;
-      const reader = res.body.getReader();
-      const chunks = [];
-      let received = 0;
-      const started = performance.now();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        received += value.length;
-
-        const elapsed = Math.max((performance.now() - started) / 1000, 0.001);
-        const speed = received / elapsed;
-        const eta = total && speed ? Math.round((total - received) / speed) : 0;
-        const pct = total ? Math.min(received / total * 100, 99.9) : 0;
-
-        progBar.style.width = pct + '%';
-        progPct.textContent = total ? pct.toFixed(1) + '%' : '...';
-        progDl.textContent = fmtBytes(received);
-        progSpd.textContent = fmtBytes(speed) + '/s';
-        progEta.textContent = fmtEta(eta);
-      }
-
-      const blob = new Blob(chunks, { type: res.headers.get('content-type') || 'video/mp4' });
-      const blobUrl = URL.createObjectURL(blob);
-      const a = Object.assign(document.createElement('a'), { href: blobUrl, download: filename });
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
-
-      progBar.style.width = '100%';
-      progPct.textContent = '100%';
-      progPhase.textContent = 'Done!';
-      progSpd.textContent = 'â€”';
-      progEta.textContent = 'â€”';
-      setTimeout(() => progSec.classList.add('hidden'), 1500);
-      st('âœ“ Saved: <strong>' + esc(filename) + '</strong>', 'success');
-    } catch {
-      resetProgress();
-      if (fallbackUrl) {
-        const a = Object.assign(document.createElement('a'), { href: fallbackUrl });
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      }
-      st('Server IP is still blocked. Configure YTDLP_PROXY_URL on Render for direct saving.', 'error');
-    }
+  function openFallbackVideo(url, filename) {
+    resetProgress();
+    const a = Object.assign(document.createElement('a'), {
+      href: url,
+      target: '_blank',
+      rel: 'noopener'
+    });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    st('Opened video in a new tab: <strong>' + esc(filename) + '</strong>', 'info');
   }
 </script>
 </body>
