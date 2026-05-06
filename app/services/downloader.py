@@ -80,6 +80,33 @@ FORMAT_MAP: dict[str, str] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Player client lists  (two separate strategies — see WHY below)
+# ---------------------------------------------------------------------------
+
+# FORMAT LISTING: android_vr/android first because they return full DASH
+# manifests (all resolutions up to 4K) on datacenter IPs without needing
+# a PO token.  The 'web' client falls back to 360p progressive-only on
+# server IPs without a PO token.
+_FORMATS_CLIENT_LIST = ["android_vr", "android", "web", "tv_embedded", "ios"]
+
+# DOWNLOAD: ios MUST be first.
+#
+# WHY THE 403 HAPPENS:
+#   android_vr/android generate CDN video URLs that are cryptographically
+#   signed with a nonce derived from the extraction IP.  When the server
+#   then fetches bytes from that signed URL, YouTube's CDN validates the
+#   nonce against the requesting IP — on datacenter/Render IPs this check
+#   fails and the CDN returns HTTP 403: Forbidden.
+#
+# WHY ios FIXES IT:
+#   The iOS client generates CDN URLs using a different signing scheme that
+#   is NOT IP-bound.  The URLs work from any server IP, which is why this
+#   is the standard fix recommended by yt-dlp maintainers for server-side
+#   deployments that hit 403 on the actual byte-fetch step.
+_DOWNLOAD_CLIENT_LIST = ["ios", "tv_embedded", "mweb", "android", "web"]
+
+
 class JobStatus(str, Enum):
     PENDING = "pending"
     DOWNLOADING = "downloading"
@@ -91,24 +118,18 @@ class JobStatus(str, Enum):
 # Shared ydl_opts builder
 # ---------------------------------------------------------------------------
 
-def _base_opts() -> dict:
-    """Options common to both format-listing and downloading.
+def _base_opts(client_list: list[str] | None = None) -> dict:
+    """Build yt-dlp options.
 
-    Client strategy (order matters — yt-dlp merges formats from all clients):
-      android_vr  - App client; no PO token needed; returns full DASH manifests
-                    with resolutions up to 1080p on datacenter IPs. PRIMARY.
-      android     - Another app client; no PO token needed; broad compatibility.
-      web         - Browser client; needs PO token on datacenter IPs to serve
-                    DASH (1080p+), but still useful when cookies are present.
-      tv_embedded - YouTube TV embedded player; no PO token needed.
-      ios         - YouTube iOS app; last-resort fallback.
+    Pass *client_list* to override the player_client order:
+      - _FORMATS_CLIENT_LIST  for format/info extraction (android_vr first)
+      - _DOWNLOAD_CLIENT_LIST for actual download       (ios first)
 
-    WHY android_vr/android first:
-      On production/datacenter IPs (e.g. Render), the 'web' client requires a
-      Proof-Of-Origin (PO) token to unlock DASH manifests.  Without it, YouTube
-      only serves progressive streams capped at 360p.  The android_vr and
-      android app clients do NOT require PO tokens, so they return the full
-      set of DASH formats (up to 1080p / 4K) even from a server IP.
+    The two lists exist because the optimal client differs per phase:
+      android_vr gets the richest DASH format list but generates IP-bound
+      CDN URLs that 403 on server IPs at download time.  ios generates
+      universally-fetchable CDN URLs at the cost of a slightly smaller
+      initial format list (compensated by the other fallbacks).
     """
     opts = {
         "quiet": True,
@@ -117,9 +138,7 @@ def _base_opts() -> dict:
         "js_runtimes": _JS_RUNTIMES,
         "extractor_args": {
             "youtube": {
-                # android_vr / android bypass PO-token requirement → full DASH
-                # web is kept so cookie auth still works when cookies are present.
-                "player_client": ["android_vr", "android", "web", "tv_embedded", "ios"],
+                "player_client": client_list or _FORMATS_CLIENT_LIST,
             }
         },
         # Mimic a real browser so YouTube doesn't flag the request
@@ -160,13 +179,8 @@ class DownloaderService:
     def get_formats(self, url: str) -> dict:
         """Fetch video metadata and return all quality options.
 
-        IMPORTANT: We do NOT filter quality options based on what formats
-        yt-dlp reports during info-extraction.  On datacenter/prod IPs,
-        YouTube restricts the listing to low-res progressive streams (360p)
-        even when higher qualities are fully downloadable via the android/
-        android_vr player clients.  Decoupling listing from downloading means
-        the user always sees the full quality menu, and the download step
-        uses the FORMAT_MAP selectors which successfully fetch the real stream.
+        Uses _FORMATS_CLIENT_LIST (android_vr first) to get the richest DASH
+        manifest.  The player client used here does NOT affect download URLs.
         """
         _warnings: list[str] = []
 
@@ -176,7 +190,7 @@ class DownloaderService:
             def warning(self, msg): _warnings.append(msg)
             def error(self, msg): _warnings.append(f"ERROR: {msg}")
 
-        opts = _base_opts()
+        opts = _base_opts(client_list=_FORMATS_CLIENT_LIST)  # android_vr first
         opts.update({
             "logger": _Logger(),
             "format": "bestvideo*+bestaudio*/bestvideo+bestaudio/best",
@@ -289,13 +303,19 @@ class DownloaderService:
         logger.info("Download started  job=%s format=%s url=%s", job_id, format_id, url)
 
         fmt = FORMAT_MAP.get(format_id, FORMAT_MAP["best"])
-        opts = _base_opts()
+        opts = _base_opts(client_list=_DOWNLOAD_CLIENT_LIST)  # ios first → no 403
         opts.update({
             "outtmpl":              str(DOWNLOADS_DIR / "%(title)s.%(ext)s"),
             "format":               fmt,
             "merge_output_format":  "mp4",
             "restrictfilenames":    True,
             "progress_hooks":       [self._make_progress_hook(job_id)],
+            # Verify the selected URL is actually fetchable before committing
+            # to the download — surfaces 403s early with a clear error message
+            # instead of failing mid-stream.
+            "check_formats":        "selected",
+            # Download multiple fragments in parallel for faster speeds.
+            "concurrent_fragment_downloads": 4,
         })
 
         try:
