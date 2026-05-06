@@ -808,7 +808,7 @@
 
       } else if (data.status === 'completed') {
         if (data.direct_url) {
-          await downloadInBrowser(data.direct_url, data.filename || 'video.mp4');
+          await downloadInBrowser('/direct/' + jobId, data.filename || 'video.mp4', data.direct_url);
           dlBtn.disabled = false; dlTxt.textContent = 'Download Again';
           return;
         }
@@ -841,7 +841,7 @@
     }
   }
 
-  async function downloadInBrowser(url, filename) {
+  async function downloadInBrowser(url, filename, fallbackUrl) {
     progBar.style.width = '0%';
     progPct.textContent = '0%';
     progDl.textContent = progSpd.textContent = progEta.textContent = 'â€”';
@@ -892,9 +892,11 @@
       st('âœ“ Saved: <strong>' + esc(filename) + '</strong>', 'success');
     } catch {
       resetProgress();
-      const a = Object.assign(document.createElement('a'), { href: url });
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      st('Browser security blocked direct saving, so the video was opened instead.', 'info');
+      if (fallbackUrl) {
+        const a = Object.assign(document.createElement('a'), { href: fallbackUrl });
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      }
+      st('Server IP is still blocked. Configure YTDLP_PROXY_URL on Render for direct saving.', 'error');
     }
   }
 </script>

@@ -1,12 +1,14 @@
 import asyncio
 import logging
+import os
 import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Form, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from starlette.background import BackgroundTask
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +107,68 @@ async def serve_file(job_id: str):
         media_type="video/mp4",
         headers={"Content-Disposition": f'attachment; filename="{filepath.name}"'},
         background=BackgroundTask(_delete_after_send),
+    )
+
+
+@router.get("/direct/{job_id}")
+async def serve_direct_file(job_id: str):
+    """Stream a browser-direct fallback URL through this app.
+
+    This keeps the response same-origin for the browser, so the frontend can
+    show progress and save a Blob. If Render's IP is blocked, configure
+    YTDLP_PROXY_URL so this server-side stream uses a clean egress IP.
+    """
+    job = _service.get_job(job_id)
+    if not job or job.get("status") != "completed" or not job.get("direct_url"):
+        return JSONResponse(status_code=404, content={"error": "Direct URL not ready"})
+
+    direct_url = job["direct_url"]
+    filename = job.get("filename") or "video.mp4"
+    proxy_url = os.environ.get("YTDLP_PROXY_URL", "").strip()
+    proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
+
+    def _open_stream():
+        return requests.get(
+            direct_url,
+            stream=True,
+            timeout=60,
+            headers={"User-Agent": "Mozilla/5.0"},
+            proxies=proxies,
+        )
+
+    try:
+        upstream = await asyncio.to_thread(_open_stream)
+        upstream.raise_for_status()
+    except Exception as exc:
+        logger.warning("Direct stream failed for job=%s: %s", job_id, exc)
+        return JSONResponse(
+            status_code=502,
+            content={
+                "error": (
+                    "Server could not stream the fallback URL. Configure "
+                    "YTDLP_PROXY_URL on Render for direct saving."
+                )
+            },
+        )
+
+    def _iter_content():
+        try:
+            for chunk in upstream.iter_content(chunk_size=262_144):
+                if chunk:
+                    yield chunk
+        finally:
+            upstream.close()
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+    }
+    if upstream.headers.get("content-length"):
+        headers["Content-Length"] = upstream.headers["content-length"]
+
+    return StreamingResponse(
+        _iter_content(),
+        media_type=upstream.headers.get("content-type") or "video/mp4",
+        headers=headers,
     )
 
 
