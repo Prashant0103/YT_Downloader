@@ -69,18 +69,21 @@ class JobStatus(str, Enum):
 def _base_opts() -> dict:
     """Options common to both format-listing and downloading.
 
-    Client strategy:
-      web         - PRIMARY when cookies are present; uses cookie auth so YouTube
-                    treats the request as a logged-in browser session. This is the
-                    most effective client on datacenter IPs with fresh cookies.
-      tv_embedded - YouTube TV embedded player; no PO token needed, good fallback.
-      mweb        - Mobile web; another browser-like fallback.
-      ios         - YouTube iOS app; broad last-resort fallback.
+    Client strategy (order matters — yt-dlp merges formats from all clients):
+      android_vr  - App client; no PO token needed; returns full DASH manifests
+                    with resolutions up to 1080p on datacenter IPs. PRIMARY.
+      android     - Another app client; no PO token needed; broad compatibility.
+      web         - Browser client; needs PO token on datacenter IPs to serve
+                    DASH (1080p+), but still useful when cookies are present.
+      tv_embedded - YouTube TV embedded player; no PO token needed.
+      ios         - YouTube iOS app; last-resort fallback.
 
-    NOTE: player_skip intentionally NOT set.  Skipping the webpage removes the
-    visitor-session context that some videos need, causing YouTube to trigger
-    'confirm you are not a bot' even with valid cookies.  With real cookies
-    the webpage loads as an authenticated session.
+    WHY android_vr/android first:
+      On production/datacenter IPs (e.g. Render), the 'web' client requires a
+      Proof-Of-Origin (PO) token to unlock DASH manifests.  Without it, YouTube
+      only serves progressive streams capped at 360p.  The android_vr and
+      android app clients do NOT require PO tokens, so they return the full
+      set of DASH formats (up to 1080p / 4K) even from a server IP.
     """
     opts = {
         "quiet": True,
@@ -89,9 +92,9 @@ def _base_opts() -> dict:
         "js_runtimes": _JS_RUNTIMES,
         "extractor_args": {
             "youtube": {
-                # web MUST be first so cookies are used for authentication.
-                # android_vr / ios are app clients that ignore cookies entirely.
-                "player_client": ["web", "tv_embedded", "mweb", "ios"],
+                # android_vr / android bypass PO-token requirement → full DASH
+                # web is kept so cookie auth still works when cookies are present.
+                "player_client": ["android_vr", "android", "web", "tv_embedded", "ios"],
             }
         },
         # Mimic a real browser so YouTube doesn't flag the request
@@ -142,8 +145,13 @@ class DownloaderService:
         opts = _base_opts()
         opts.update({
             "logger": _Logger(),
+            # Request the best combined stream — yt-dlp still populates the
+            # full `formats` list regardless of which format selector is used.
             "format": "bestvideo*+bestaudio*/bestvideo+bestaudio/best",
             "ignore_no_formats_error": True,
+            # Force DASH manifest parsing so we always get the full resolution
+            # list including 1080p/4K streams, not just progressive streams.
+            "youtube_include_dash_manifest": True,
         })
 
         with yt_dlp.YoutubeDL(opts) as ydl:
