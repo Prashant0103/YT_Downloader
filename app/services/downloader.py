@@ -43,6 +43,20 @@ _JS_RUNTIMES: dict = _build_js_runtimes()
 
 _RESOLUTIONS = [2160, 1440, 1080, 720, 480, 360]
 
+# Hardcoded quality labels always shown to the user.
+# Decoupled from what YouTube serves during info-extraction so that
+# server/datacenter IPs (which get restricted to 360p progressive streams
+# during listing) still offer all qualities. The actual download uses
+# format selectors + android clients that bypass the restriction.
+_QUALITY_OPTIONS = [
+    {"label": "4K",   "format_key": "2160"},
+    {"label": "1440p", "format_key": "1440"},
+    {"label": "1080p", "format_key": "1080"},
+    {"label": "720p",  "format_key": "720"},
+    {"label": "480p",  "format_key": "480"},
+    {"label": "360p",  "format_key": "360"},
+]
+
 
 FORMAT_MAP: dict[str, str] = {
     "2160": "bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=2160]+bestaudio/best[height<=2160][acodec!=none]",
@@ -133,7 +147,16 @@ class DownloaderService:
             self._jobs[job_id].update(kwargs)
 
     def get_formats(self, url: str) -> dict:
-        """Fetch available formats (single attempt, no retries)."""
+        """Fetch video metadata and return all quality options.
+
+        IMPORTANT: We do NOT filter quality options based on what formats
+        yt-dlp reports during info-extraction.  On datacenter/prod IPs,
+        YouTube restricts the listing to low-res progressive streams (360p)
+        even when higher qualities are fully downloadable via the android/
+        android_vr player clients.  Decoupling listing from downloading means
+        the user always sees the full quality menu, and the download step
+        uses the FORMAT_MAP selectors which successfully fetch the real stream.
+        """
         _warnings: list[str] = []
 
         class _Logger:
@@ -145,35 +168,46 @@ class DownloaderService:
         opts = _base_opts()
         opts.update({
             "logger": _Logger(),
-            # Request the best combined stream — yt-dlp still populates the
-            # full `formats` list regardless of which format selector is used.
             "format": "bestvideo*+bestaudio*/bestvideo+bestaudio/best",
             "ignore_no_formats_error": True,
-            # Force DASH manifest parsing so we always get the full resolution
-            # list including 1080p/4K streams, not just progressive streams.
-            "youtube_include_dash_manifest": True,
+            "skip_download": True,
         })
 
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
-        result = _parse_formats(info)
+        if not info:
+            if _warnings:
+                logger.warning("No info for %s — warnings: %s", url, _warnings)
+            hint = ""
+            if any("429" in w for w in _warnings):
+                hint = " YouTube is rate-limiting this server (HTTP 429). Try again later."
+            elif any("Sign in" in w for w in _warnings):
+                hint = " YouTube requires fresh cookies for this video."
+            raise yt_dlp.utils.DownloadError(
+                f"Could not fetch video information.{hint}"
+            )
 
-        if result["formats"]:
-            return result
-
-        # Surface yt-dlp warnings as a useful error
-        if _warnings:
-            logger.warning("No formats for %s — warnings: %s", url, _warnings)
-
-        hint = ""
-        if any("429" in w for w in _warnings):
-            hint = " YouTube is rate-limiting this server (HTTP 429). Try again later."
-        elif any("Sign in" in w for w in _warnings):
-            hint = " YouTube requires fresh cookies for this video."
-        raise yt_dlp.utils.DownloadError(
-            f"No downloadable formats found for this video.{hint}"
+        # Log the raw heights returned so you can inspect prod server logs.
+        raw_fmts = info.get("formats", [])
+        raw_heights = sorted(set(
+            f.get("height") for f in raw_fmts if f.get("height")
+        ))
+        logger.info(
+            "get_formats url=%s title=%r raw_heights=%s warnings=%s",
+            url, info.get("title", ""), raw_heights, _warnings or None,
         )
+
+        # Always return the full hardcoded quality menu — size_mb is omitted
+        # because we can't reliably estimate it from a restricted listing.
+        return {
+            "title":    info.get("title", "Unknown"),
+            "duration": info.get("duration"),
+            "formats":  [
+                {"label": q["label"], "format_key": q["format_key"], "size_mb": None}
+                for q in _QUALITY_OPTIONS
+            ],
+        }
 
     def download(self, job_id: str, url: str, format_id: str = "best") -> None:
         with self._lock:
