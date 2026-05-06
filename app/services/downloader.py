@@ -360,7 +360,7 @@ class DownloaderService:
                 logger.warning(
                     "Direct download 403 job=%s — trying Invidious fallback", job_id
                 )
-                self._set(job_id, progress=0.0, speed_bytes=0, eta_seconds=0)
+                self._set(job_id, progress=5.0, speed_bytes=0, eta_seconds=0)
 
                 try:
                     max_h = int(format_id) if format_id.isdigit() else 720
@@ -390,6 +390,7 @@ class DownloaderService:
                 except Exception as inv_exc:
                     logger.error("Invidious fallback failed job=%s error=%s", job_id, inv_exc)
                     try:
+                        self._set(job_id, progress=10.0, speed_bytes=0, eta_seconds=0)
                         direct = _make_browser_download(url, format_id)
                         self._set(
                             job_id,
